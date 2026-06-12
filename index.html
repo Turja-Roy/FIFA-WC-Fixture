@@ -17,8 +17,7 @@
         <h1>World Cup 2026 Tracker</h1>
         <p>Update scores, track the bracket, and follow the action</p>
         <div class="controls">
-            <button id="export-btn" class="btn" title="Export your current scores to JSON">Export Data</button>
-            <button id="reset-btn" class="btn btn-outline" title="Reset all scores to default data.json">Reset All</button>
+            <button id="update-btn" class="btn" title="Fetch latest results from the internet">Update Results</button>
         </div>
     </header>
 
@@ -36,6 +35,13 @@
                 <div id="bracket-container" class="bracket">
                     <!-- Bracket will be injected here -->
                 </div>
+            </div>
+        </section>
+
+        <section id="standings-section">
+            <h2>Group Standings</h2>
+            <div id="standings-container" class="standings-grid">
+                <!-- Standings will be injected here -->
             </div>
         </section>
     </main>
