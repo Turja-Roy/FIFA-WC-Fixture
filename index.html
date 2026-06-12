@@ -15,13 +15,16 @@
     
     <header>
         <h1>World Cup 2026 Tracker</h1>
-        <p>Update scores, track the bracket, and follow the action</p>
-        <div class="controls">
-            <button id="update-btn" class="btn" title="Fetch latest results from the internet">Update Results</button>
-        </div>
     </header>
 
     <main>
+        <section id="upcoming-matches-section">
+            <h2>Upcoming Matches</h2>
+            <div id="upcoming-container" class="upcoming-grid">
+                <!-- Upcoming matches injected here -->
+            </div>
+        </section>
+
         <section id="groups-section">
             <h2>Group Stage</h2>
             <div id="groups-container" class="groups-grid">
