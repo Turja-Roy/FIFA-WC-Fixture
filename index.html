@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FIFA World Cup 2026 Tracker</title>
+    <meta name="description" content="Track live scores, fixtures, and the bracket for the FIFA World Cup 2026.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="bg-animated"></div>
+    
+    <header>
+        <h1>World Cup 2026 Tracker</h1>
+        <p>Update scores, track the bracket, and follow the action</p>
+        <div class="controls">
+            <button id="export-btn" class="btn" title="Export your current scores to JSON">Export Data</button>
+            <button id="reset-btn" class="btn btn-outline" title="Reset all scores to default data.json">Reset All</button>
+        </div>
+    </header>
+
+    <main>
+        <section id="groups-section">
+            <h2>Group Stage</h2>
+            <div id="groups-container" class="groups-grid">
+                <!-- Groups will be dynamically injected here -->
+            </div>
+        </section>
+
+        <section id="knockout-section">
+            <h2>Knockout Stage</h2>
+            <div class="bracket-wrapper">
+                <div id="bracket-container" class="bracket">
+                    <!-- Bracket will be injected here -->
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <footer>
+        <p>Created for FIFA World Cup 2026. <a href="https://github.com/" target="_blank">Host yours on GitHub Pages</a></p>
+    </footer>
+
+    <!-- Tooltip Element -->
+    <div id="tooltip" class="tooltip hidden"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

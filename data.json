@@ -1,0 +1,998 @@
+{
+    "groups": {
+        "A": [
+            {
+                "id": 1,
+                "team1": "Mexico",
+                "team2": "South Africa",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-11 18:00",
+                "stadium": "MetLife Stadium, New York/New Jersey"
+            },
+            {
+                "id": 2,
+                "team1": "Team A3",
+                "team2": "Team A4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-11 21:00",
+                "stadium": "AT&T Stadium, Dallas"
+            },
+            {
+                "id": 3,
+                "team1": "Mexico",
+                "team2": "Team A3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-12 00:00",
+                "stadium": "Arrowhead Stadium, Kansas City"
+            },
+            {
+                "id": 4,
+                "team1": "South Africa",
+                "team2": "Team A4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-12 15:00",
+                "stadium": "NRG Stadium, Houston"
+            },
+            {
+                "id": 5,
+                "team1": "Mexico",
+                "team2": "Team A4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-12 18:00",
+                "stadium": "Mercedes-Benz Stadium, Atlanta"
+            },
+            {
+                "id": 6,
+                "team1": "South Africa",
+                "team2": "Team A3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-12 21:00",
+                "stadium": "SoFi Stadium, Los Angeles"
+            }
+        ],
+        "B": [
+            {
+                "id": 7,
+                "team1": "Canada",
+                "team2": "Team B2",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-13 00:00",
+                "stadium": "Lincoln Financial Field, Philadelphia"
+            },
+            {
+                "id": 8,
+                "team1": "Team B3",
+                "team2": "Team B4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-13 15:00",
+                "stadium": "Lumen Field, Seattle"
+            },
+            {
+                "id": 9,
+                "team1": "Canada",
+                "team2": "Team B3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-13 18:00",
+                "stadium": "Levi's Stadium, San Francisco Bay Area"
+            },
+            {
+                "id": 10,
+                "team1": "Team B2",
+                "team2": "Team B4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-13 21:00",
+                "stadium": "Gillette Stadium, Boston"
+            },
+            {
+                "id": 11,
+                "team1": "Canada",
+                "team2": "Team B4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-14 00:00",
+                "stadium": "Hard Rock Stadium, Miami"
+            },
+            {
+                "id": 12,
+                "team1": "Team B2",
+                "team2": "Team B3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-14 15:00",
+                "stadium": "BMO Field, Toronto"
+            }
+        ],
+        "C": [
+            {
+                "id": 13,
+                "team1": "Team C1",
+                "team2": "Team C2",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-14 18:00",
+                "stadium": "BC Place, Vancouver"
+            },
+            {
+                "id": 14,
+                "team1": "Team C3",
+                "team2": "Team C4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-14 21:00",
+                "stadium": "Estadio BBVA, Monterrey"
+            },
+            {
+                "id": 15,
+                "team1": "Team C1",
+                "team2": "Team C3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-15 00:00",
+                "stadium": "Estadio Akron, Guadalajara"
+            },
+            {
+                "id": 16,
+                "team1": "Team C2",
+                "team2": "Team C4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-15 15:00",
+                "stadium": "Estadio Azteca, Mexico City"
+            },
+            {
+                "id": 17,
+                "team1": "Team C1",
+                "team2": "Team C4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-15 18:00",
+                "stadium": "MetLife Stadium, New York/New Jersey"
+            },
+            {
+                "id": 18,
+                "team1": "Team C2",
+                "team2": "Team C3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-15 21:00",
+                "stadium": "AT&T Stadium, Dallas"
+            }
+        ],
+        "D": [
+            {
+                "id": 19,
+                "team1": "USA",
+                "team2": "Paraguay",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-16 00:00",
+                "stadium": "Arrowhead Stadium, Kansas City"
+            },
+            {
+                "id": 20,
+                "team1": "Australia",
+                "team2": "Turkey",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-16 15:00",
+                "stadium": "NRG Stadium, Houston"
+            },
+            {
+                "id": 21,
+                "team1": "USA",
+                "team2": "Australia",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-16 18:00",
+                "stadium": "Mercedes-Benz Stadium, Atlanta"
+            },
+            {
+                "id": 22,
+                "team1": "Paraguay",
+                "team2": "Turkey",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-16 21:00",
+                "stadium": "SoFi Stadium, Los Angeles"
+            },
+            {
+                "id": 23,
+                "team1": "USA",
+                "team2": "Turkey",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-17 00:00",
+                "stadium": "Lincoln Financial Field, Philadelphia"
+            },
+            {
+                "id": 24,
+                "team1": "Paraguay",
+                "team2": "Australia",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-17 15:00",
+                "stadium": "Lumen Field, Seattle"
+            }
+        ],
+        "E": [
+            {
+                "id": 25,
+                "team1": "Team E1",
+                "team2": "Team E2",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-17 18:00",
+                "stadium": "Levi's Stadium, San Francisco Bay Area"
+            },
+            {
+                "id": 26,
+                "team1": "Team E3",
+                "team2": "Team E4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-17 21:00",
+                "stadium": "Gillette Stadium, Boston"
+            },
+            {
+                "id": 27,
+                "team1": "Team E1",
+                "team2": "Team E3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-18 00:00",
+                "stadium": "Hard Rock Stadium, Miami"
+            },
+            {
+                "id": 28,
+                "team1": "Team E2",
+                "team2": "Team E4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-18 15:00",
+                "stadium": "BMO Field, Toronto"
+            },
+            {
+                "id": 29,
+                "team1": "Team E1",
+                "team2": "Team E4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-18 18:00",
+                "stadium": "BC Place, Vancouver"
+            },
+            {
+                "id": 30,
+                "team1": "Team E2",
+                "team2": "Team E3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-18 21:00",
+                "stadium": "Estadio BBVA, Monterrey"
+            }
+        ],
+        "F": [
+            {
+                "id": 31,
+                "team1": "Team F1",
+                "team2": "Team F2",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-19 00:00",
+                "stadium": "Estadio Akron, Guadalajara"
+            },
+            {
+                "id": 32,
+                "team1": "Team F3",
+                "team2": "Team F4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-19 15:00",
+                "stadium": "Estadio Azteca, Mexico City"
+            },
+            {
+                "id": 33,
+                "team1": "Team F1",
+                "team2": "Team F3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-19 18:00",
+                "stadium": "MetLife Stadium, New York/New Jersey"
+            },
+            {
+                "id": 34,
+                "team1": "Team F2",
+                "team2": "Team F4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-19 21:00",
+                "stadium": "AT&T Stadium, Dallas"
+            },
+            {
+                "id": 35,
+                "team1": "Team F1",
+                "team2": "Team F4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-20 00:00",
+                "stadium": "Arrowhead Stadium, Kansas City"
+            },
+            {
+                "id": 36,
+                "team1": "Team F2",
+                "team2": "Team F3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-20 15:00",
+                "stadium": "NRG Stadium, Houston"
+            }
+        ],
+        "G": [
+            {
+                "id": 37,
+                "team1": "Team G1",
+                "team2": "Team G2",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-20 18:00",
+                "stadium": "Mercedes-Benz Stadium, Atlanta"
+            },
+            {
+                "id": 38,
+                "team1": "Team G3",
+                "team2": "Team G4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-20 21:00",
+                "stadium": "SoFi Stadium, Los Angeles"
+            },
+            {
+                "id": 39,
+                "team1": "Team G1",
+                "team2": "Team G3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-21 00:00",
+                "stadium": "Lincoln Financial Field, Philadelphia"
+            },
+            {
+                "id": 40,
+                "team1": "Team G2",
+                "team2": "Team G4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-21 15:00",
+                "stadium": "Lumen Field, Seattle"
+            },
+            {
+                "id": 41,
+                "team1": "Team G1",
+                "team2": "Team G4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-21 18:00",
+                "stadium": "Levi's Stadium, San Francisco Bay Area"
+            },
+            {
+                "id": 42,
+                "team1": "Team G2",
+                "team2": "Team G3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-21 21:00",
+                "stadium": "Gillette Stadium, Boston"
+            }
+        ],
+        "H": [
+            {
+                "id": 43,
+                "team1": "Team H1",
+                "team2": "Team H2",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-22 00:00",
+                "stadium": "Hard Rock Stadium, Miami"
+            },
+            {
+                "id": 44,
+                "team1": "Team H3",
+                "team2": "Team H4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-22 15:00",
+                "stadium": "BMO Field, Toronto"
+            },
+            {
+                "id": 45,
+                "team1": "Team H1",
+                "team2": "Team H3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-22 18:00",
+                "stadium": "BC Place, Vancouver"
+            },
+            {
+                "id": 46,
+                "team1": "Team H2",
+                "team2": "Team H4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-22 21:00",
+                "stadium": "Estadio BBVA, Monterrey"
+            },
+            {
+                "id": 47,
+                "team1": "Team H1",
+                "team2": "Team H4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-23 00:00",
+                "stadium": "Estadio Akron, Guadalajara"
+            },
+            {
+                "id": 48,
+                "team1": "Team H2",
+                "team2": "Team H3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-23 15:00",
+                "stadium": "Estadio Azteca, Mexico City"
+            }
+        ],
+        "I": [
+            {
+                "id": 49,
+                "team1": "Team I1",
+                "team2": "Team I2",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-23 18:00",
+                "stadium": "MetLife Stadium, New York/New Jersey"
+            },
+            {
+                "id": 50,
+                "team1": "Team I3",
+                "team2": "Team I4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-23 21:00",
+                "stadium": "AT&T Stadium, Dallas"
+            },
+            {
+                "id": 51,
+                "team1": "Team I1",
+                "team2": "Team I3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-24 00:00",
+                "stadium": "Arrowhead Stadium, Kansas City"
+            },
+            {
+                "id": 52,
+                "team1": "Team I2",
+                "team2": "Team I4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-24 15:00",
+                "stadium": "NRG Stadium, Houston"
+            },
+            {
+                "id": 53,
+                "team1": "Team I1",
+                "team2": "Team I4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-24 18:00",
+                "stadium": "Mercedes-Benz Stadium, Atlanta"
+            },
+            {
+                "id": 54,
+                "team1": "Team I2",
+                "team2": "Team I3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-24 21:00",
+                "stadium": "SoFi Stadium, Los Angeles"
+            }
+        ],
+        "J": [
+            {
+                "id": 55,
+                "team1": "Team J1",
+                "team2": "Team J2",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-25 00:00",
+                "stadium": "Lincoln Financial Field, Philadelphia"
+            },
+            {
+                "id": 56,
+                "team1": "Team J3",
+                "team2": "Team J4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-25 15:00",
+                "stadium": "Lumen Field, Seattle"
+            },
+            {
+                "id": 57,
+                "team1": "Team J1",
+                "team2": "Team J3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-25 18:00",
+                "stadium": "Levi's Stadium, San Francisco Bay Area"
+            },
+            {
+                "id": 58,
+                "team1": "Team J2",
+                "team2": "Team J4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-25 21:00",
+                "stadium": "Gillette Stadium, Boston"
+            },
+            {
+                "id": 59,
+                "team1": "Team J1",
+                "team2": "Team J4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-26 00:00",
+                "stadium": "Hard Rock Stadium, Miami"
+            },
+            {
+                "id": 60,
+                "team1": "Team J2",
+                "team2": "Team J3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-26 15:00",
+                "stadium": "BMO Field, Toronto"
+            }
+        ],
+        "K": [
+            {
+                "id": 61,
+                "team1": "Team K1",
+                "team2": "Team K2",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-26 18:00",
+                "stadium": "BC Place, Vancouver"
+            },
+            {
+                "id": 62,
+                "team1": "Team K3",
+                "team2": "Team K4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-26 21:00",
+                "stadium": "Estadio BBVA, Monterrey"
+            },
+            {
+                "id": 63,
+                "team1": "Team K1",
+                "team2": "Team K3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-27 00:00",
+                "stadium": "Estadio Akron, Guadalajara"
+            },
+            {
+                "id": 64,
+                "team1": "Team K2",
+                "team2": "Team K4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-27 15:00",
+                "stadium": "Estadio Azteca, Mexico City"
+            },
+            {
+                "id": 65,
+                "team1": "Team K1",
+                "team2": "Team K4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-27 18:00",
+                "stadium": "MetLife Stadium, New York/New Jersey"
+            },
+            {
+                "id": 66,
+                "team1": "Team K2",
+                "team2": "Team K3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-27 21:00",
+                "stadium": "AT&T Stadium, Dallas"
+            }
+        ],
+        "L": [
+            {
+                "id": 67,
+                "team1": "Team L1",
+                "team2": "Team L2",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-28 00:00",
+                "stadium": "Arrowhead Stadium, Kansas City"
+            },
+            {
+                "id": 68,
+                "team1": "Team L3",
+                "team2": "Team L4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-28 15:00",
+                "stadium": "NRG Stadium, Houston"
+            },
+            {
+                "id": 69,
+                "team1": "Team L1",
+                "team2": "Team L3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-28 18:00",
+                "stadium": "Mercedes-Benz Stadium, Atlanta"
+            },
+            {
+                "id": 70,
+                "team1": "Team L2",
+                "team2": "Team L4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-28 21:00",
+                "stadium": "SoFi Stadium, Los Angeles"
+            },
+            {
+                "id": 71,
+                "team1": "Team L1",
+                "team2": "Team L4",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-29 00:00",
+                "stadium": "Lincoln Financial Field, Philadelphia"
+            },
+            {
+                "id": 72,
+                "team1": "Team L2",
+                "team2": "Team L3",
+                "score1": "",
+                "score2": "",
+                "time": "2026-06-29 15:00",
+                "stadium": "Lumen Field, Seattle"
+            }
+        ]
+    },
+    "knockout": {
+        "Round of 32": [
+            {
+                "id": 73,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-20 15:00",
+                "stadium": "Levi's Stadium, San Francisco Bay Area"
+            },
+            {
+                "id": 74,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-20 15:00",
+                "stadium": "Gillette Stadium, Boston"
+            },
+            {
+                "id": 75,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-21 15:00",
+                "stadium": "Hard Rock Stadium, Miami"
+            },
+            {
+                "id": 76,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-21 15:00",
+                "stadium": "BMO Field, Toronto"
+            },
+            {
+                "id": 77,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-21 15:00",
+                "stadium": "BC Place, Vancouver"
+            },
+            {
+                "id": 78,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-22 15:00",
+                "stadium": "Estadio BBVA, Monterrey"
+            },
+            {
+                "id": 79,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-22 15:00",
+                "stadium": "Estadio Akron, Guadalajara"
+            },
+            {
+                "id": 80,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-22 15:00",
+                "stadium": "Estadio Azteca, Mexico City"
+            },
+            {
+                "id": 81,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-23 15:00",
+                "stadium": "MetLife Stadium, New York/New Jersey"
+            },
+            {
+                "id": 82,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-23 15:00",
+                "stadium": "AT&T Stadium, Dallas"
+            },
+            {
+                "id": 83,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-23 15:00",
+                "stadium": "Arrowhead Stadium, Kansas City"
+            },
+            {
+                "id": 84,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-24 15:00",
+                "stadium": "NRG Stadium, Houston"
+            },
+            {
+                "id": 85,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-24 15:00",
+                "stadium": "Mercedes-Benz Stadium, Atlanta"
+            },
+            {
+                "id": 86,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-24 15:00",
+                "stadium": "SoFi Stadium, Los Angeles"
+            },
+            {
+                "id": 87,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-25 15:00",
+                "stadium": "Lincoln Financial Field, Philadelphia"
+            },
+            {
+                "id": 88,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-25 15:00",
+                "stadium": "Lumen Field, Seattle"
+            }
+        ],
+        "Round of 16": [
+            {
+                "id": 89,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-25 15:00",
+                "stadium": "Levi's Stadium, San Francisco Bay Area"
+            },
+            {
+                "id": 90,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-26 15:00",
+                "stadium": "Gillette Stadium, Boston"
+            },
+            {
+                "id": 91,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-26 15:00",
+                "stadium": "Hard Rock Stadium, Miami"
+            },
+            {
+                "id": 92,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-26 15:00",
+                "stadium": "BMO Field, Toronto"
+            },
+            {
+                "id": 93,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-27 15:00",
+                "stadium": "BC Place, Vancouver"
+            },
+            {
+                "id": 94,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-27 15:00",
+                "stadium": "Estadio BBVA, Monterrey"
+            },
+            {
+                "id": 95,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-27 15:00",
+                "stadium": "Estadio Akron, Guadalajara"
+            },
+            {
+                "id": 96,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-28 15:00",
+                "stadium": "Estadio Azteca, Mexico City"
+            }
+        ],
+        "Quarter-finals": [
+            {
+                "id": 97,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-28 15:00",
+                "stadium": "MetLife Stadium, New York/New Jersey"
+            },
+            {
+                "id": 98,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-28 15:00",
+                "stadium": "AT&T Stadium, Dallas"
+            },
+            {
+                "id": 99,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-29 15:00",
+                "stadium": "Arrowhead Stadium, Kansas City"
+            },
+            {
+                "id": 100,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-29 15:00",
+                "stadium": "NRG Stadium, Houston"
+            }
+        ],
+        "Semi-finals": [
+            {
+                "id": 101,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-29 15:00",
+                "stadium": "Mercedes-Benz Stadium, Atlanta"
+            },
+            {
+                "id": 102,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-30 15:00",
+                "stadium": "SoFi Stadium, Los Angeles"
+            }
+        ],
+        "Final": [
+            {
+                "id": 103,
+                "team1": "TBD",
+                "team2": "TBD",
+                "score1": "",
+                "score2": "",
+                "penalties": "",
+                "time": "2026-07-30 15:00",
+                "stadium": "Lincoln Financial Field, Philadelphia"
+            }
+        ]
+    }
+}
