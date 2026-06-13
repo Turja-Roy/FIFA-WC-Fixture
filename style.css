@@ -181,15 +181,15 @@ section h2::after {
 /* Group Stage Grid */
 .groups-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-    gap: 2rem;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 1.5rem;
 }
 
 .group-card {
     background: var(--glass-bg);
     border: 1px solid var(--glass-border);
     border-radius: var(--card-radius);
-    padding: 1.5rem;
+    padding: 1rem;
     backdrop-filter: blur(12px);
     transition: var(--transition);
 }
@@ -201,8 +201,8 @@ section h2::after {
 }
 
 .group-title {
-    font-size: 1.5rem;
-    margin-bottom: 1.5rem;
+    font-size: 1.3rem;
+    margin-bottom: 1rem;
     text-align: center;
     font-weight: 800;
     color: var(--primary);
@@ -211,10 +211,11 @@ section h2::after {
 .match-row {
     display: flex;
     flex-direction: column;
-    padding: 1rem 0;
+    padding: 0.5rem 0;
     border-bottom: 1px solid var(--glass-border);
     cursor: pointer;
     transition: var(--transition);
+    position: relative;
 }
 
 .match-teams {
@@ -225,10 +226,10 @@ section h2::after {
 }
 
 .match-time-label {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: var(--text-muted);
     text-align: center;
-    margin-top: 0.5rem;
+    margin-top: 0.2rem;
 }
 
 .ko-time {
@@ -251,14 +252,75 @@ section h2::after {
 .team {
     flex: 1;
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 0;
+}
+
+.team .flag-icon {
+    flex-shrink: 0;
+}
+
+.team.right {
+    justify-content: flex-end;
+}
+
+.team .team-name {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
 }
 
 .team.right {
     text-align: right;
+}
+
+.team.winner .team-name,
+.ko-team-row.winner .ko-team {
+    color: var(--primary);
+}
+
+.team.winner,
+.ko-team-row.winner {
+    position: relative;
+}
+
+.completed-match .team.winner::after,
+.completed-match .ko-team-row.winner::after {
+    content: '';
+    position: absolute;
+    left: 10%;
+    right: 10%;
+    bottom: -10px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(0, 255, 136, 0.55), transparent);
+    pointer-events: none;
+}
+
+.completed-match .match-time-label,
+.completed-match .match-details {
+    opacity: 0.9;
+}
+
+.match-details {
+    max-height: 0;
+    overflow: hidden;
+    margin-top: 0;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    text-align: center;
+    opacity: 0;
+    transition: max-height 0.25s ease, margin-top 0.25s ease, opacity 0.25s ease;
+}
+
+.hover-target:hover .match-details,
+.hover-target:focus-within .match-details {
+    max-height: 1.5rem;
+    margin-top: 0.35rem;
+    opacity: 1;
 }
 
 .score-box {
@@ -269,16 +331,16 @@ section h2::after {
 }
 
 .score-input {
-    width: 32px;
-    height: 32px;
+    width: 26px;
+    height: 26px;
     text-align: center;
     background: rgba(0, 0, 0, 0.5);
     border: 1px solid var(--glass-border);
     color: #fff;
-    border-radius: 6px;
+    border-radius: 4px;
     font-family: var(--font-family);
     font-weight: 800;
-    font-size: 1rem;
+    font-size: 0.9rem;
     transition: var(--transition);
 }
 
@@ -302,8 +364,11 @@ section h2::after {
     width: 20px;
     height: auto;
     border-radius: 3px;
-    margin-right: 8px;
     vertical-align: middle;
+}
+
+.team .flag-icon {
+    margin-right: 8px;
 }
 
 .team.right .flag-icon {
@@ -471,6 +536,11 @@ section h2::after {
     align-items: center;
 }
 
+.ko-team-row.winner .score-input {
+    border-color: rgba(0, 255, 136, 0.6);
+    box-shadow: 0 0 10px rgba(0, 255, 136, 0.12);
+}
+
 .ko-score {
     width: 28px;
     height: 28px;
@@ -517,28 +587,6 @@ section h2::after {
 /* Lines connecting brackets (simplified via borders) */
 .connect-right { position: relative; }
 .connect-left { position: relative; }
-
-/* Tooltip */
-.tooltip {
-    position: absolute;
-    background: rgba(0, 0, 0, 0.9);
-    border: 1px solid var(--primary);
-    color: #fff;
-    padding: 0.8rem 1rem;
-    border-radius: 8px;
-    font-size: 0.85rem;
-    pointer-events: none;
-    z-index: 1000;
-    box-shadow: 0 10px 20px rgba(0,0,0,0.5);
-    backdrop-filter: blur(5px);
-    opacity: 1;
-    transition: opacity 0.2s;
-    white-space: pre-line;
-}
-
-.tooltip.hidden {
-    opacity: 0;
-}
 
 footer {
     text-align: center;
@@ -608,4 +656,47 @@ footer a:hover {
     border-top-color: transparent;
     border-radius: 50%;
     animation: spin .6s linear infinite;
+}
+
+/* Live Match Styling */
+.live-match {
+    border-color: #ff3333 !important;
+    background: rgba(255, 51, 51, 0.05) !important;
+    box-shadow: 0 0 15px rgba(255, 51, 51, 0.2);
+}
+
+.completed-match {
+}
+
+.live-badge {
+    position: absolute;
+    top: -8px;
+    right: 10px;
+    background: #ff3333;
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 0.1rem 0.5rem;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    z-index: 5;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+    pointer-events: none;
+    letter-spacing: 1px;
+}
+
+.pulsing-dot {
+    width: 6px;
+    height: 6px;
+    background-color: #fff;
+    border-radius: 50%;
+    animation: livePulse 1s infinite;
+}
+
+@keyframes livePulse {
+    0% { transform: scale(0.8); opacity: 1; }
+    50% { transform: scale(1.5); opacity: 0.4; }
+    100% { transform: scale(0.8); opacity: 1; }
 }

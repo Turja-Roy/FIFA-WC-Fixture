@@ -16,6 +16,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         'Croatia': 'hr', 'Scotland': 'gb-sct', 'Panama': 'pa', 'Qatar': 'qa'
     };
 
+    // ESPN uses different team names than openfootball; map ESPN names to openfootball names
+    const ESPN_NAME_MAP = {
+        'United States': 'USA',
+        'Korea Republic': 'South Korea',
+        'Bosnia-Herzegovina': 'Bosnia & Herzegovina',
+        'Côte d\'Ivoire': 'Ivory Coast',
+        'Congo DR': 'DR Congo',
+        'Cabo Verde': 'Cape Verde',
+        'Czechia': 'Czech Republic',
+        'Turkiye': 'Turkey'
+    };
+
     function getCountryCode(teamName) {
         return COUNTRY_CODES[teamName] || 'un';
     }
@@ -33,9 +45,34 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    function isMatchLive(isoString) {
+        const matchTime = new Date(isoString).getTime();
+        const now = Date.now();
+        // Assuming a match lasts roughly 110 minutes total including halftime
+        return now >= matchTime && now <= matchTime + (110 * 60 * 1000);
+    }
+
     function getFlagHtml(code) {
         if (!code || code === 'un') return '';
         return `<img src="https://flagcdn.com/24x18/${code.toLowerCase()}.png" alt="${code}" class="flag-icon">`;
+    }
+
+    function getMatchWinnerSide(match) {
+        const s1 = Number(match.score1);
+        const s2 = Number(match.score2);
+
+        if (Number.isFinite(s1) && Number.isFinite(s2) && s1 !== s2) {
+            return s1 > s2 ? '1' : '2';
+        }
+
+        const penMatch = String(match.penalties || '').match(/(\d+)\s*-\s*(\d+)/);
+        if (!penMatch) return null;
+
+        const p1 = Number(penMatch[1]);
+        const p2 = Number(penMatch[2]);
+        if (!Number.isFinite(p1) || !Number.isFinite(p2) || p1 === p2) return null;
+
+        return p1 > p2 ? '1' : '2';
     }
 
     async function fetchInternetData() {
@@ -113,15 +150,93 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             matchData = await fetchInternetData();
             
+            // Fetch live scores from ESPN and overlay them
+            await fetchLiveScores();
+            
             renderGroups();
             renderBracket();
             renderUpcoming();
             renderStandings();
-            setupTooltips();
 
         } catch (error) {
             console.error("Error loading data:", error);
             document.getElementById('groups-container').innerHTML = `<p style="color: red; font-weight: bold; background: #fff; padding: 1rem; border-radius: 8px;">Error fetching live data: ${error.message}. Please check your internet connection.</p>`;
+        }
+    }
+
+    async function fetchLiveScores() {
+        try {
+            const resp = await fetch('https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard');
+            const data = await resp.json();
+
+            for (const ev of (data.events || [])) {
+                for (const comp of (ev.competitions || [])) {
+                    const statusState = comp.status?.type?.state; // 'in', 'post', 'pre'
+                    const statusDetail = comp.status?.type?.detail; // "61'", "FT", etc.
+                    
+                    // Get team names and scores from ESPN
+                    let espnHome = null, espnAway = null;
+                    for (const c of (comp.competitors || [])) {
+                        const entry = {
+                            name: c.team?.displayName || '',
+                            score: c.score || '',
+                            homeAway: c.homeAway
+                        };
+                        if (c.homeAway === 'home') espnHome = entry;
+                        else espnAway = entry;
+                    }
+                    if (!espnHome || !espnAway) continue;
+
+                    // Normalize ESPN names to our internal names
+                    const normHome = ESPN_NAME_MAP[espnHome.name] || espnHome.name;
+                    const normAway = ESPN_NAME_MAP[espnAway.name] || espnAway.name;
+
+                    // Find matching match in our data
+                    const updateMatch = (m) => {
+                        if (!m) return false;
+                        // ESPN: home listed first in competitor array
+                        // openfootball: team1 is first listed (may be home or away)
+                        if ((m.team1 === normHome && m.team2 === normAway)) {
+                            if (statusState === 'in' || statusState === 'post') {
+                                m.score1 = espnHome.score;
+                                m.score2 = espnAway.score;
+                            }
+                            if (statusState === 'in') {
+                                m._liveDetail = statusDetail; // e.g. "61'"
+                            }
+                            return true;
+                        } else if ((m.team1 === normAway && m.team2 === normHome)) {
+                            if (statusState === 'in' || statusState === 'post') {
+                                m.score1 = espnAway.score;
+                                m.score2 = espnHome.score;
+                            }
+                            if (statusState === 'in') {
+                                m._liveDetail = statusDetail;
+                            }
+                            return true;
+                        }
+                        return false;
+                    };
+
+                    let found = false;
+                    for (const g in matchData.groups) {
+                        for (const m of matchData.groups[g]) {
+                            if (updateMatch(m)) { found = true; break; }
+                        }
+                        if (found) break;
+                    }
+                    if (!found) {
+                        for (const r in matchData.knockout) {
+                            for (const m of matchData.knockout[r]) {
+                                if (updateMatch(m)) { found = true; break; }
+                            }
+                            if (found) break;
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('ESPN live scores unavailable:', e.message);
         }
     }
 
@@ -159,21 +274,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             matches.forEach(match => {
                 const row = document.createElement('div');
-                row.className = 'match-row hover-target';
+                const isLive = match._liveDetail || isMatchLive(match.time);
+                const winnerSide = getMatchWinnerSide(match);
+                
+                row.className = `match-row hover-target ${isLive ? 'live-match' : ''} ${(!isLive && match.score1 !== '' && match.score2 !== '') ? 'completed-match' : ''}`;
                 row.id = `match-${match.id}`;
-                row.dataset.info = `Stadium: ${match.stadium}`;
+
+                const liveText = match._liveDetail || 'LIVE';
+                const liveBadge = isLive ? `<div class="live-badge">${liveText} <span class="pulsing-dot"></span></div>` : '';
 
                 row.innerHTML = `
+                    ${liveBadge}
                     <div class="match-teams">
-                        <div class="team">${getFlagHtml(match.code1)}${match.team1}</div>
+                        <div class="team ${winnerSide === '1' ? 'winner' : ''}">${getFlagHtml(match.code1)}<span class="team-name">${match.team1}</span></div>
                         <div class="score-box">
                             <input type="number" class="score-input" data-id="${match.id}" data-team="1" value="${match.score1}" min="0">
                             <span>-</span>
                             <input type="number" class="score-input" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
                         </div>
-                        <div class="team right">${match.team2}${getFlagHtml(match.code2)}</div>
+                        <div class="team right ${winnerSide === '2' ? 'winner' : ''}"><span class="team-name">${match.team2}</span>${getFlagHtml(match.code2)}</div>
                     </div>
                     <div class="match-time-label">${formatTime(match.time)}</div>
+                    <div class="match-details">Stadium: ${match.stadium}</div>
                 `;
                 groupCard.appendChild(row);
             });
@@ -183,21 +305,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function createKnockoutMatchHtml(match, isFinal = false) {
-        if(!match) return ''; // Saftey check if data is incomplete
+        if(!match) return ''; // Safety check if data is incomplete
+        const isLive = match._liveDetail || isMatchLive(match.time);
+        const winnerSide = getMatchWinnerSide(match);
+        const liveText = match._liveDetail || 'LIVE';
+        const liveBadge = isLive ? `<div class="live-badge" style="top: -15px; right: -5px;">${liveText} <span class="pulsing-dot"></span></div>` : '';
         let pensInput = isFinal || match.id > 72 ? `<input type="text" class="penalties-input" data-id="${match.id}" placeholder="" value="${match.penalties || ''}">` : '';
         return `
-            <div id="match-${match.id}" class="knockout-match hover-target ${isFinal ? 'final-match' : ''}" data-info="Stadium: ${match.stadium}">
+            <div id="match-${match.id}" class="knockout-match hover-target ${isFinal ? 'final-match' : ''} ${isLive ? 'live-match' : ''} ${(!isLive && match.score1 !== '' && match.score2 !== '') ? 'completed-match' : ''}">
+                ${liveBadge}
                 ${isFinal ? '<div class="final-label">Final</div>' : ''}
                 <div class="match-time-label ko-time">${formatTime(match.time)}</div>
-                <div class="ko-team-row">
+                <div class="ko-team-row ${winnerSide === '1' ? 'winner' : ''}">
                     <span class="ko-team">${getFlagHtml(match.code1)}${match.team1}</span>
                     <input type="number" class="score-input ko-score" data-id="${match.id}" data-team="1" value="${match.score1}" min="0">
                 </div>
-                <div class="ko-team-row">
+                <div class="ko-team-row ${winnerSide === '2' ? 'winner' : ''}">
                     <span class="ko-team">${getFlagHtml(match.code2)}${match.team2}</span>
                     <input type="number" class="score-input ko-score" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
                 </div>
                 ${pensInput}
+                <div class="match-details">Stadium: ${match.stadium}</div>
             </div>
         `;
     }
@@ -278,16 +406,25 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         next5.forEach(match => {
             const card = document.createElement('div');
-            card.className = 'upcoming-card';
+            const isLive = match._liveDetail || isMatchLive(match.time);
+            card.className = `upcoming-card ${isLive ? 'live-match' : ''}`;
+            card.style.position = 'relative';
             card.onclick = () => window.scrollToMatch(match.id);
             
             const team1Display = getFlagHtml(match.code1) || `<span style="font-size: 0.85rem">${match.team1}</span>`;
             const team2Display = getFlagHtml(match.code2) || `<span style="font-size: 0.85rem">${match.team2}</span>`;
+            const liveText = match._liveDetail || 'LIVE';
+            const liveBadge = isLive ? `<div class="live-badge">${liveText} <span class="pulsing-dot"></span></div>` : '';
+            const scoreDisplay = (isLive && match.score1 !== '' && match.score2 !== '') 
+                ? `<div style="font-size: 1.1rem; font-weight: 800; color: var(--primary);">${match.score1} - ${match.score2}</div>` 
+                : '';
 
             card.innerHTML = `
+                ${liveBadge}
                 <div class="upcoming-flags">
                     ${team1Display} vs. ${team2Display}
                 </div>
+                ${scoreDisplay}
                 <div class="upcoming-time">${formatTime(match.time)}</div>
             `;
             container.appendChild(card);
@@ -388,30 +525,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function setupTooltips() {
-        const tooltip = document.getElementById('tooltip');
-        
-        document.body.addEventListener('mousemove', e => {
-            const target = e.target.closest('.hover-target');
-            if (target) {
-                tooltip.textContent = target.dataset.info;
-                tooltip.classList.remove('hidden');
-                
-                let top = e.pageY + 15;
-                let left = e.pageX + 15;
-                
-                if (left + tooltip.offsetWidth > window.innerWidth) {
-                    left = e.pageX - tooltip.offsetWidth - 15;
-                }
-                
-                tooltip.style.top = top + 'px';
-                tooltip.style.left = left + 'px';
-            } else {
-                tooltip.classList.add('hidden');
-            }
-        });
-    }
-
     document.body.addEventListener('input', e => {
         if (e.target.classList.contains('score-input')) {
             const matchId = e.target.dataset.id;
@@ -440,4 +553,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     loadData();
+    
+    // Auto-refresh live scores every 30 seconds
+    setInterval(() => {
+        loadData();
+    }, 30000);
 });
