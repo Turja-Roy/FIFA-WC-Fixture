@@ -52,6 +52,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         return now >= matchTime && now <= matchTime + (110 * 60 * 1000);
     }
 
+    function isMatchWatchable(isoString) {
+        const matchTime = new Date(isoString).getTime();
+        const now = Date.now();
+        const MARGIN = 15 * 60 * 1000; // 15 minutes before/after
+        return now >= matchTime - MARGIN && now <= matchTime + (110 * 60 * 1000) + MARGIN;
+    }
+
     function getFlagHtml(code) {
         if (!code || code === 'un') return '';
         return `<img src="https://flagcdn.com/24x18/${code.toLowerCase()}.png" alt="${code}" class="flag-icon">`;
@@ -73,6 +80,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!Number.isFinite(p1) || !Number.isFinite(p2) || p1 === p2) return null;
 
         return p1 > p2 ? '1' : '2';
+    }
+
+    function getLiveWatchUrl() {
+        return 'https://www.yalla9live.tv/';
     }
 
     async function fetchInternetData() {
@@ -283,6 +294,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const liveText = match._liveDetail || 'LIVE';
                 const liveBadge = isLive ? `<div class="live-badge">${liveText} <span class="pulsing-dot"></span></div>` : '';
 
+                const watchable = isMatchWatchable(match.time);
+                const watchBtn = watchable ? `<a href="${getLiveWatchUrl(match)}" target="_blank" class="live-watch-btn" onclick="event.stopPropagation()">▶ Live</a>` : '';
+
                 row.innerHTML = `
                     ${liveBadge}
                     <div class="match-teams">
@@ -294,6 +308,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </div>
                         <div class="team right ${winnerSide === '2' ? 'winner' : ''}"><span class="team-name">${match.team2}</span>${getFlagHtml(match.code2)}</div>
                     </div>
+                    ${watchBtn}
                     <div class="match-time-label">${formatTime(match.time)}</div>
                     <div class="match-details">Stadium: ${match.stadium}</div>
                 `;
@@ -311,6 +326,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const liveText = match._liveDetail || 'LIVE';
         const liveBadge = isLive ? `<div class="live-badge" style="top: -15px; right: -5px;">${liveText} <span class="pulsing-dot"></span></div>` : '';
         let pensInput = isFinal || match.id > 72 ? `<input type="text" class="penalties-input" data-id="${match.id}" placeholder="" value="${match.penalties || ''}">` : '';
+        const watchable = isMatchWatchable(match.time);
+        const watchBtn = watchable ? `<a href="${getLiveWatchUrl(match)}" target="_blank" class="live-watch-btn" onclick="event.stopPropagation()">▶ Live</a>` : '';
+
         return `
             <div id="match-${match.id}" class="knockout-match hover-target ${isFinal ? 'final-match' : ''} ${isLive ? 'live-match' : ''} ${(!isLive && match.score1 !== '' && match.score2 !== '') ? 'completed-match' : ''}">
                 ${liveBadge}
@@ -325,6 +343,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <input type="number" class="score-input ko-score" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
                 </div>
                 ${pensInput}
+                ${watchBtn}
                 <div class="match-details">Stadium: ${match.stadium}</div>
             </div>
         `;
@@ -419,12 +438,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ? `<div style="font-size: 1.1rem; font-weight: 800; color: var(--primary);">${match.score1} - ${match.score2}</div>` 
                 : '';
 
+            const watchable = isMatchWatchable(match.time);
+            const watchBtn = watchable ? `<a href="${getLiveWatchUrl(match)}" target="_blank" class="live-watch-btn" onclick="event.stopPropagation()">▶ Live</a>` : '';
+
             card.innerHTML = `
                 ${liveBadge}
                 <div class="upcoming-flags">
                     ${team1Display} vs. ${team2Display}
                 </div>
                 ${scoreDisplay}
+                ${watchBtn}
                 <div class="upcoming-time">${formatTime(match.time)}</div>
             `;
             container.appendChild(card);

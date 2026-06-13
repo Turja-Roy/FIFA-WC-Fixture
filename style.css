@@ -138,6 +138,7 @@ section h2::after {
     justify-content: center;
     gap: 1.5rem;
     flex-wrap: wrap;
+    align-items: flex-start;
 }
 
 .upcoming-card {
@@ -699,4 +700,33 @@ footer a:hover {
     0% { transform: scale(0.8); opacity: 1; }
     50% { transform: scale(1.5); opacity: 0.4; }
     100% { transform: scale(0.8); opacity: 1; }
+}
+
+.live-watch-btn {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: #fff;
+    background: #ff3333;
+    padding: 0.15rem 0.7rem;
+    border-radius: 4px;
+    text-decoration: none;
+    transition: background 0.2s;
+    margin: 0.3rem auto 0;
+    width: fit-content;
+    letter-spacing: 0.5px;
+}
+
+.live-watch-btn:hover {
+    background: #cc0000;
+}
+
+.match-row .live-watch-btn,
+.knockout-match .live-watch-btn {
+    display: block;
+    text-align: center;
+}
+
+.upcoming-card .live-watch-btn {
+    margin-top: 0.4rem;
 }
