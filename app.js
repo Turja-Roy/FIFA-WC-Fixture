@@ -335,11 +335,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ${isFinal ? '<div class="final-label">Final</div>' : ''}
                 <div class="match-time-label ko-time">${formatTime(match.time)}</div>
                 <div class="ko-team-row ${winnerSide === '1' ? 'winner' : ''}">
-                    <span class="ko-team">${getFlagHtml(match.code1)}${match.team1}</span>
+                    <span class="ko-team" title="${match.team1}">${getFlagHtml(match.code1)}${match.team1}</span>
                     <input type="number" class="score-input ko-score" data-id="${match.id}" data-team="1" value="${match.score1}" min="0">
                 </div>
                 <div class="ko-team-row ${winnerSide === '2' ? 'winner' : ''}">
-                    <span class="ko-team">${getFlagHtml(match.code2)}${match.team2}</span>
+                    <span class="ko-team" title="${match.team2}">${getFlagHtml(match.code2)}${match.team2}</span>
                     <input type="number" class="score-input ko-score" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
                 </div>
                 ${pensInput}
