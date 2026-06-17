@@ -86,6 +86,46 @@ document.addEventListener('DOMContentLoaded', async () => {
         return 'https://www.yalla9live.tv/';
     }
 
+    function getMatchStatus(match) {
+        if (match._espnStatusState === 'in' || isMatchLive(match.time)) return 'live';
+        if (match._espnStatusState === 'post' || (match.score1 !== '' && match.score2 !== '')) return 'completed';
+        return 'upcoming';
+    }
+
+    function getMatchCity(match) {
+        const s = match.stadium || '';
+        const parts = s.split(',').map(p => p.trim());
+        return parts[parts.length - 1] || s;
+    }
+
+    function getCityFromStadium(stadium) {
+        if (!stadium) return 'TBD';
+        const parts = stadium.split(',').map(p => p.trim());
+        return parts[parts.length - 1] || stadium;
+    }
+
+    function formatGoalScorer(goal) {
+        let suffix = '';
+        if (goal.owngoal) suffix = ' (OG)';
+        else if (goal.penalty) suffix = ' (P)';
+        return `${goal.name} ${goal.minute}'${suffix}`;
+    }
+
+    function getGoalsHtml(match) {
+        const goals = [];
+        if (match.goals1 && match.goals1.length) {
+            match.goals1.forEach(g => goals.push(`<span class="goal-scorer team1-goal">${getFlagHtml(match.code1)} ${formatGoalScorer(g)}</span>`));
+        }
+        if (match.goals2 && match.goals2.length) {
+            match.goals2.forEach(g => goals.push(`<span class="goal-scorer team2-goal">${getFlagHtml(match.code2)} ${formatGoalScorer(g)}</span>`));
+        }
+        return goals;
+    }
+
+    function isMatchFinished(match) {
+        return getMatchStatus(match) === 'completed';
+    }
+
     async function fetchInternetData() {
         const url = 'https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json?t=' + new Date().getTime();
         const response = await fetch(url);
@@ -132,7 +172,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 time: isoTime,
                 stadium: match.ground || "TBD",
                 code1: getCountryCode(match.team1),
-                code2: getCountryCode(match.team2)
+                code2: getCountryCode(match.team2),
+                goals1: match.goals1 || [],
+                goals2: match.goals2 || [],
+                htScore: match.score && match.score.ht ? match.score.ht : null,
+                round: match.round || null,
+                group: match.group || null
             };
 
             if (match.group) {
@@ -160,19 +205,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function loadData() {
         try {
             matchData = await fetchInternetData();
-            
-            // Fetch live scores from ESPN and overlay them
             await fetchLiveScores();
-            
-            renderGroups();
-            renderBracket();
-            renderUpcoming();
-            renderStandings();
-
         } catch (error) {
             console.error("Error loading data:", error);
             document.getElementById('groups-container').innerHTML = `<p style="color: red; font-weight: bold; background: #fff; padding: 1rem; border-radius: 8px;">Error fetching live data: ${error.message}. Please check your internet connection.</p>`;
+            throw error;
         }
+    }
+
+    function renderAll() {
+        renderGroups();
+        renderBracket();
+        renderUpcoming();
+        renderStandings();
     }
 
     async function fetchLiveScores() {
@@ -184,14 +229,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                 for (const comp of (ev.competitions || [])) {
                     const statusState = comp.status?.type?.state; // 'in', 'post', 'pre'
                     const statusDetail = comp.status?.type?.detail; // "61'", "FT", etc.
-                    
+
                     // Get team names and scores from ESPN
                     let espnHome = null, espnAway = null;
                     for (const c of (comp.competitors || [])) {
                         const entry = {
                             name: c.team?.displayName || '',
                             score: c.score || '',
-                            homeAway: c.homeAway
+                            homeAway: c.homeAway,
+                            statistics: c.statistics || []
                         };
                         if (c.homeAway === 'home') espnHome = entry;
                         else espnAway = entry;
@@ -208,6 +254,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                         // ESPN: home listed first in competitor array
                         // openfootball: team1 is first listed (may be home or away)
                         if ((m.team1 === normHome && m.team2 === normAway)) {
+                            m._espnEventId = ev.id;
+                            m._espnStatusState = statusState;
+                            m._espnDetails = comp.details || [];
+                            m._espnStats = {
+                                home: espnHome.statistics,
+                                away: espnAway.statistics
+                            };
+                            m._espnVenue = comp.venue || null;
+                            m._espnAttendance = comp.attendance || 0;
+                            m._espnHeadline = (comp.headlines && comp.headlines[0]) ? comp.headlines[0] : null;
+                            m._espnBroadcasts = comp.broadcasts || null;
+                            m._espnHomeName = normHome;
+                            m._espnAwayName = normAway;
                             if (statusState === 'in' || statusState === 'post') {
                                 m.score1 = espnHome.score;
                                 m.score2 = espnAway.score;
@@ -217,6 +276,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                             }
                             return true;
                         } else if ((m.team1 === normAway && m.team2 === normHome)) {
+                            m._espnEventId = ev.id;
+                            m._espnStatusState = statusState;
+                            m._espnDetails = comp.details || [];
+                            m._espnStats = {
+                                home: espnHome.statistics,
+                                away: espnAway.statistics
+                            };
+                            m._espnVenue = comp.venue || null;
+                            m._espnAttendance = comp.attendance || 0;
+                            m._espnHeadline = (comp.headlines && comp.headlines[0]) ? comp.headlines[0] : null;
+                            m._espnBroadcasts = comp.broadcasts || null;
+                            m._espnHomeName = normHome;
+                            m._espnAwayName = normAway;
                             if (statusState === 'in' || statusState === 'post') {
                                 m.score1 = espnAway.score;
                                 m.score2 = espnHome.score;
@@ -277,7 +349,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         for (const [groupName, matches] of Object.entries(matchData.groups)) {
             const groupCard = document.createElement('div');
             groupCard.className = 'group-card';
-            
+            groupCard.dataset.group = groupName;
+
             const title = document.createElement('h3');
             title.className = 'group-title';
             title.textContent = `Group ${groupName}`;
@@ -285,17 +358,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             matches.forEach(match => {
                 const row = document.createElement('div');
-                const isLive = match._liveDetail || isMatchLive(match.time);
+                const status = getMatchStatus(match);
+                const isLive = status === 'live';
                 const winnerSide = getMatchWinnerSide(match);
-                
-                row.className = `match-row hover-target ${isLive ? 'live-match' : ''} ${(!isLive && match.score1 !== '' && match.score2 !== '') ? 'completed-match' : ''}`;
+
+                row.className = `match-row hover-target ${isLive ? 'live-match' : ''} ${status === 'completed' ? 'completed-match' : ''}`;
                 row.id = `match-${match.id}`;
+                row.dataset.matchId = match.id;
+                row.dataset.team1 = match.team1;
+                row.dataset.team2 = match.team2;
+                row.dataset.stadium = match.stadium;
+                row.dataset.city = getCityFromStadium(match.stadium);
+                row.dataset.group = groupName;
+                row.dataset.stage = 'Group Stage';
+                row.dataset.status = status;
+                row.dataset.time = match.time;
 
                 const liveText = match._liveDetail || 'LIVE';
                 const liveBadge = isLive ? `<div class="live-badge">${liveText} <span class="pulsing-dot"></span></div>` : '';
 
                 const watchable = isMatchWatchable(match.time);
                 const watchBtn = watchable ? `<a href="${getLiveWatchUrl(match)}" target="_blank" class="live-watch-btn" onclick="event.stopPropagation()">▶ Live</a>` : '';
+
+                const goalList = getGoalsHtml(match);
+                const goalsHtml = goalList.length ? `<div class="match-goals">${goalList.map(g => `<div class="goal-entry">⚽ ${g}</div>`).join('')}</div>` : '';
+                const showInfoBtn = isMatchFinished(match) || isLive;
+                const infoBtn = showInfoBtn ? `<button class="match-info-btn" data-match-id="${match.id}" title="Match details">ℹ Stats</button>` : '';
 
                 row.innerHTML = `
                     ${liveBadge}
@@ -310,7 +398,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>
                     ${watchBtn}
                     <div class="match-time-label">${formatTime(match.time)}</div>
-                    <div class="match-details">Stadium: ${match.stadium}</div>
+                    <div class="match-details">
+                        <div class="match-stadium">📍 ${match.stadium}</div>
+                        ${goalsHtml}
+                        ${infoBtn}
+                    </div>
                 `;
                 groupCard.appendChild(row);
             });
@@ -321,7 +413,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function createKnockoutMatchHtml(match, isFinal = false) {
         if(!match) return ''; // Safety check if data is incomplete
-        const isLive = match._liveDetail || isMatchLive(match.time);
+        const status = getMatchStatus(match);
+        const isLive = status === 'live';
         const winnerSide = getMatchWinnerSide(match);
         const liveText = match._liveDetail || 'LIVE';
         const liveBadge = isLive ? `<div class="live-badge" style="top: -15px; right: -5px;">${liveText} <span class="pulsing-dot"></span></div>` : '';
@@ -329,8 +422,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         const watchable = isMatchWatchable(match.time);
         const watchBtn = watchable ? `<a href="${getLiveWatchUrl(match)}" target="_blank" class="live-watch-btn" onclick="event.stopPropagation()">▶ Live</a>` : '';
 
+        const stageLabel = match.round || 'Knockout';
+        const stageMap = {
+            'Round of 32': 'Round of 32',
+            'Round of 16': 'Round of 16',
+            'Quarter-final': 'Quarter-finals',
+            'Semi-final': 'Semi-finals',
+            'Final': 'Final'
+        };
+        const mappedStage = stageMap[match.round] || match.round || 'Knockout';
+
+        const goalList = getGoalsHtml(match);
+        const goalsHtml = goalList.length ? `<div class="match-goals ko-goals">${goalList.map(g => `<div class="goal-entry">⚽ ${g}</div>`).join('')}</div>` : '';
+        const showInfoBtn = isMatchFinished(match) || isLive;
+        const infoBtn = showInfoBtn ? `<button class="match-info-btn ko-info-btn" data-match-id="${match.id}" title="Match details">ℹ</button>` : '';
+
         return `
-            <div id="match-${match.id}" class="knockout-match hover-target ${isFinal ? 'final-match' : ''} ${isLive ? 'live-match' : ''} ${(!isLive && match.score1 !== '' && match.score2 !== '') ? 'completed-match' : ''}">
+            <div id="match-${match.id}" class="knockout-match hover-target ${isFinal ? 'final-match' : ''} ${isLive ? 'live-match' : ''} ${status === 'completed' ? 'completed-match' : ''}"
+                 data-match-id="${match.id}"
+                 data-team1="${match.team1}"
+                 data-team2="${match.team2}"
+                 data-stadium="${match.stadium}"
+                 data-city="${getCityFromStadium(match.stadium)}"
+                 data-group=""
+                 data-stage="${mappedStage}"
+                 data-status="${status}"
+                 data-time="${match.time}">
                 ${liveBadge}
                 ${isFinal ? '<div class="final-label">Final</div>' : ''}
                 <div class="match-time-label ko-time">${formatTime(match.time)}</div>
@@ -344,7 +461,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </div>
                 ${pensInput}
                 ${watchBtn}
-                <div class="match-details">Stadium: ${match.stadium}</div>
+                <div class="match-details">
+                    <div class="match-stadium">📍 ${match.stadium}</div>
+                    ${goalsHtml}
+                    ${infoBtn}
+                </div>
             </div>
         `;
     }
@@ -425,17 +546,38 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         next5.forEach(match => {
             const card = document.createElement('div');
-            const isLive = match._liveDetail || isMatchLive(match.time);
+            const status = getMatchStatus(match);
+            const isLive = status === 'live';
             card.className = `upcoming-card ${isLive ? 'live-match' : ''}`;
             card.style.position = 'relative';
             card.onclick = () => window.scrollToMatch(match.id);
-            
+
+            const stageMap = {
+                'Round of 32': 'Round of 32',
+                'Round of 16': 'Round of 16',
+                'Quarter-final': 'Quarter-finals',
+                'Semi-final': 'Semi-finals',
+                'Final': 'Final'
+            };
+            const mappedStage = match.group ? 'Group Stage' : (stageMap[match.round] || match.round || 'Knockout');
+            const mappedGroup = match.group ? match.group.replace('Group ', '') : '';
+
+            card.dataset.matchId = match.id;
+            card.dataset.team1 = match.team1;
+            card.dataset.team2 = match.team2;
+            card.dataset.stadium = match.stadium;
+            card.dataset.city = getCityFromStadium(match.stadium);
+            card.dataset.group = mappedGroup;
+            card.dataset.stage = mappedStage;
+            card.dataset.status = status;
+            card.dataset.time = match.time;
+
             const team1Display = getFlagHtml(match.code1) || `<span style="font-size: 0.85rem">${match.team1}</span>`;
             const team2Display = getFlagHtml(match.code2) || `<span style="font-size: 0.85rem">${match.team2}</span>`;
             const liveText = match._liveDetail || 'LIVE';
             const liveBadge = isLive ? `<div class="live-badge">${liveText} <span class="pulsing-dot"></span></div>` : '';
-            const scoreDisplay = (isLive && match.score1 !== '' && match.score2 !== '') 
-                ? `<div style="font-size: 1.1rem; font-weight: 800; color: var(--primary);">${match.score1} - ${match.score2}</div>` 
+            const scoreDisplay = (isLive && match.score1 !== '' && match.score2 !== '')
+                ? `<div style="font-size: 1.1rem; font-weight: 800; color: var(--primary);">${match.score1} - ${match.score2}</div>`
                 : '';
 
             const watchable = isMatchWatchable(match.time);
@@ -506,15 +648,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             let teamList = Object.values(teamsMap);
             teamList.forEach(t => t.gd = t.gf - t.ga);
-            
+
             teamList.sort((a, b) => {
-                if(b.pts !== a.pts) return b.pts - a.pts; 
-                if(b.gd !== a.gd) return b.gd - a.gd;    
-                return b.gf - a.gf;                      
+                if(b.pts !== a.pts) return b.pts - a.pts;
+                if(b.gd !== a.gd) return b.gd - a.gd;
+                return b.gf - a.gf;
             });
 
             const groupCard = document.createElement('div');
             groupCard.className = 'group-card';
+            groupCard.dataset.group = groupName;
             
             let html = `<h3 class="group-title">Group ${groupName}</h3>`;
             html += `<table class="standings-table">
@@ -575,10 +718,722 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    loadData();
-    
+    // =============================
+    // FILTER BAR
+    // =============================
+    const filterState = {
+        team: '',
+        dateFrom: '',
+        dateTo: '',
+        city: '',
+        group: '',
+        stage: '',
+        statuses: new Set()
+    };
+
+    function getAllTeams() {
+        const teams = new Set();
+        for (const g in matchData.groups) {
+            matchData.groups[g].forEach(m => { teams.add(m.team1); teams.add(m.team2); });
+        }
+        for (const r in matchData.knockout) {
+            matchData.knockout[r].forEach(m => { teams.add(m.team1); teams.add(m.team2); });
+        }
+        return Array.from(teams).sort();
+    }
+
+    function getAllCities() {
+        const cities = new Set();
+        const collect = (matches) => matches.forEach(m => {
+            const city = getCityFromStadium(m.stadium);
+            if (city && city !== 'TBD') cities.add(city);
+        });
+        for (const g in matchData.groups) collect(matchData.groups[g]);
+        for (const r in matchData.knockout) collect(matchData.knockout[r]);
+        return Array.from(cities).sort();
+    }
+
+    function populateFilterOptions() {
+        const citySelect = document.getElementById('filter-city');
+        if (!citySelect) return;
+        const current = citySelect.value;
+        citySelect.innerHTML = '<option value="">All Cities</option>';
+        getAllCities().forEach(city => {
+            const opt = document.createElement('option');
+            opt.value = city;
+            opt.textContent = city;
+            citySelect.appendChild(opt);
+        });
+        citySelect.value = current;
+    }
+
+    function matchPassesFilter(el) {
+        if (filterState.team) {
+            const t1 = (el.dataset.team1 || '').toLowerCase();
+            const t2 = (el.dataset.team2 || '').toLowerCase();
+            const q = filterState.team.toLowerCase();
+            if (!t1.includes(q) && !t2.includes(q)) return false;
+        }
+        if (filterState.dateFrom) {
+            const t = new Date(el.dataset.time);
+            const from = new Date(filterState.dateFrom);
+            from.setHours(0, 0, 0, 0);
+            if (t < from) return false;
+        }
+        if (filterState.dateTo) {
+            const t = new Date(el.dataset.time);
+            const to = new Date(filterState.dateTo);
+            to.setHours(23, 59, 59, 999);
+            if (t > to) return false;
+        }
+        if (filterState.city && el.dataset.city !== filterState.city) return false;
+        if (filterState.group && el.dataset.group !== filterState.group) return false;
+        if (filterState.stage && el.dataset.stage !== filterState.stage) return false;
+        if (filterState.statuses.size > 0 && !filterState.statuses.has(el.dataset.status)) return false;
+        return true;
+    }
+
+    function applyFilters() {
+        let visibleGroupMatches = 0;
+        let visibleBracketMatches = 0;
+        let visibleUpcoming = 0;
+        let totalVisible = 0;
+
+        document.querySelectorAll('.match-row[data-match-id]').forEach(el => {
+            const visible = matchPassesFilter(el);
+            el.classList.toggle('filter-hidden', !visible);
+            if (visible) { visibleGroupMatches++; totalVisible++; }
+        });
+
+        document.querySelectorAll('.knockout-match[data-match-id]').forEach(el => {
+            const visible = matchPassesFilter(el);
+            el.classList.toggle('filter-hidden', !visible);
+            if (visible) { visibleBracketMatches++; totalVisible++; }
+        });
+
+        document.querySelectorAll('.upcoming-card[data-match-id]').forEach(el => {
+            const visible = matchPassesFilter(el);
+            el.classList.toggle('filter-hidden', !visible);
+            if (visible) { visibleUpcoming++; totalVisible++; }
+        });
+
+        // Hide group cards that have no visible matches
+        document.querySelectorAll('.group-card').forEach(card => {
+            const hasVisible = Array.from(card.querySelectorAll('.match-row')).some(r => !r.classList.contains('filter-hidden'));
+            if (card.dataset.group) {
+                card.classList.toggle('filter-hidden', !hasVisible);
+            }
+        });
+
+        // Hide bracket pairs/singles/columns with no visible matches
+        document.querySelectorAll('.match-pair, .match-single').forEach(container => {
+            const hasVisible = Array.from(container.querySelectorAll('.knockout-match')).some(m => !m.classList.contains('filter-hidden'));
+            container.classList.toggle('filter-hidden', !hasVisible);
+        });
+
+        document.querySelectorAll('.bracket-column').forEach(col => {
+            const hasVisible = Array.from(col.querySelectorAll('.knockout-match')).some(m => !m.classList.contains('filter-hidden'));
+            col.classList.toggle('filter-hidden', !hasVisible);
+        });
+
+        // Standings: hide group cards that don't match group filter
+        const standingsContainer = document.getElementById('standings-container');
+        if (standingsContainer) {
+            standingsContainer.classList.toggle('filter-hidden', !!filterState.group || !!filterState.team || !!filterState.statuses.size || !!filterState.dateFrom || !!filterState.dateTo || !!filterState.city || !!filterState.stage);
+        }
+        document.querySelectorAll('#standings-container .group-card').forEach(card => {
+            card.classList.toggle('filter-hidden', filterState.group && card.dataset.group !== filterState.group);
+        });
+
+        // Hide sections that have no visible content
+        const groupsSection = document.getElementById('groups-section');
+        if (groupsSection) {
+            groupsSection.classList.toggle('filter-hidden', visibleGroupMatches === 0 && filterState.stage !== 'Group Stage');
+        }
+        const bracketSection = document.getElementById('knockout-section');
+        if (bracketSection) {
+            bracketSection.classList.toggle('filter-hidden', visibleBracketMatches === 0 && filterState.stage === 'Group Stage');
+        }
+        const upcomingSection = document.getElementById('upcoming-matches-section');
+        if (upcomingSection) {
+            upcomingSection.classList.toggle('filter-hidden', visibleUpcoming === 0);
+        }
+
+        // Show "no matches" message
+        showNoMatchesMessage(totalVisible === 0);
+
+        // Update status line
+        updateFilterStatus(visibleGroupMatches, visibleBracketMatches, visibleUpcoming);
+    }
+
+    function showNoMatchesMessage(show) {
+        let msg = document.getElementById('no-matches-msg');
+        if (show && !msg) {
+            msg = document.createElement('div');
+            msg.id = 'no-matches-msg';
+            msg.className = 'no-matches-msg';
+            msg.textContent = 'No matches found for the selected filters.';
+            const main = document.querySelector('main');
+            main.insertBefore(msg, main.firstChild);
+        } else if (!show && msg) {
+            msg.remove();
+        }
+    }
+
+    function updateFilterStatus(g, b, u) {
+        const statusEl = document.getElementById('filter-status');
+        if (!statusEl) return;
+        const total = g + b + u;
+        const hasFilters = filterState.team || filterState.dateFrom || filterState.dateTo || filterState.city || filterState.group || filterState.stage || filterState.statuses.size;
+        if (hasFilters && total > 0) {
+            const parts = [];
+            if (g) parts.push(`${g} group`);
+            if (b) parts.push(`${b} bracket`);
+            if (u) parts.push(`${u} upcoming`);
+            statusEl.innerHTML = `Showing <strong>${total}</strong> match${total !== 1 ? 'es' : ''} (${parts.join(', ')})`;
+            statusEl.classList.remove('hidden');
+        } else {
+            statusEl.classList.add('hidden');
+        }
+    }
+
+    function setupTeamAutocomplete() {
+        const input = document.getElementById('filter-team');
+        const dropdown = document.getElementById('team-suggestions');
+        if (!input || !dropdown) return;
+
+        let highlightedIndex = -1;
+
+        function render(items) {
+            dropdown.innerHTML = '';
+            if (!items.length) {
+                const empty = document.createElement('div');
+                empty.className = 'suggestion-empty';
+                empty.textContent = 'No teams found';
+                dropdown.appendChild(empty);
+                return;
+            }
+            items.forEach((team, i) => {
+                const div = document.createElement('div');
+                div.className = 'suggestion-item' + (i === highlightedIndex ? ' highlighted' : '');
+                div.dataset.team = team;
+                const code = getCountryCode(team);
+                div.innerHTML = `${getFlagHtml(code)} <span>${team}</span>`;
+                div.addEventListener('mousedown', e => {
+                    e.preventDefault();
+                    selectTeam(team);
+                });
+                dropdown.appendChild(div);
+            });
+        }
+
+        function selectTeam(team) {
+            input.value = team;
+            filterState.team = team;
+            dropdown.classList.add('hidden');
+            applyFilters();
+        }
+
+        input.addEventListener('input', () => {
+            const q = input.value.trim();
+            if (!q) {
+                filterState.team = '';
+                dropdown.classList.add('hidden');
+                applyFilters();
+                return;
+            }
+            const all = getAllTeams();
+            const matches = all.filter(t => t.toLowerCase().includes(q.toLowerCase())).slice(0, 10);
+            filterState.team = q;
+            highlightedIndex = -1;
+            render(matches);
+            dropdown.classList.remove('hidden');
+            applyFilters();
+        });
+
+        input.addEventListener('keydown', e => {
+            const items = dropdown.querySelectorAll('.suggestion-item');
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                highlightedIndex = Math.min(highlightedIndex + 1, items.length - 1);
+                render(getAllTeams().filter(t => t.toLowerCase().includes(input.value.toLowerCase())).slice(0, 10));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                highlightedIndex = Math.max(highlightedIndex - 1, 0);
+                render(getAllTeams().filter(t => t.toLowerCase().includes(input.value.toLowerCase())).slice(0, 10));
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (highlightedIndex >= 0 && items[highlightedIndex]) {
+                    selectTeam(items[highlightedIndex].dataset.team);
+                } else {
+                    dropdown.classList.add('hidden');
+                }
+            } else if (e.key === 'Escape') {
+                dropdown.classList.add('hidden');
+            }
+        });
+
+        input.addEventListener('blur', () => {
+            setTimeout(() => dropdown.classList.add('hidden'), 150);
+        });
+    }
+
+    function setupFilterBar() {
+        const dateFrom = document.getElementById('filter-date-from');
+        const dateTo = document.getElementById('filter-date-to');
+        const city = document.getElementById('filter-city');
+        const group = document.getElementById('filter-group');
+        const stage = document.getElementById('filter-stage');
+        const clear = document.getElementById('filter-clear');
+        const chips = document.querySelectorAll('.status-chips .chip');
+
+        dateFrom.addEventListener('change', () => { filterState.dateFrom = dateFrom.value; applyFilters(); });
+        dateTo.addEventListener('change', () => { filterState.dateTo = dateTo.value; applyFilters(); });
+        city.addEventListener('change', () => { filterState.city = city.value; applyFilters(); });
+        group.addEventListener('change', () => { filterState.group = group.value; applyFilters(); });
+        stage.addEventListener('change', () => { filterState.stage = stage.value; applyFilters(); });
+
+        chips.forEach(chip => {
+            chip.addEventListener('click', () => {
+                const status = chip.dataset.status;
+                if (filterState.statuses.has(status)) {
+                    filterState.statuses.delete(status);
+                    chip.classList.remove('active');
+                } else {
+                    filterState.statuses.add(status);
+                    chip.classList.add('active');
+                }
+                applyFilters();
+            });
+        });
+
+        clear.addEventListener('click', () => {
+            filterState.team = '';
+            filterState.dateFrom = '';
+            filterState.dateTo = '';
+            filterState.city = '';
+            filterState.group = '';
+            filterState.stage = '';
+            filterState.statuses.clear();
+            document.getElementById('filter-team').value = '';
+            dateFrom.value = '';
+            dateTo.value = '';
+            city.value = '';
+            group.value = '';
+            stage.value = '';
+            chips.forEach(c => c.classList.remove('active'));
+            document.getElementById('team-suggestions').classList.add('hidden');
+            applyFilters();
+        });
+
+        setupTeamAutocomplete();
+    }
+
+    // =============================
+    // DYNAMIC HOVER EXPANSION
+    // =============================
+    function expandDetails(target) {
+        const details = target.querySelector('.match-details');
+        if (!details) return;
+        if (details.dataset.expanded === '1') return;
+        details.dataset.expanded = '1';
+        details.style.transition = 'max-height 0.3s ease, margin-top 0.25s ease, opacity 0.25s ease';
+        details.style.maxHeight = details.scrollHeight + 'px';
+        details.style.opacity = '1';
+        details.style.marginTop = '0.35rem';
+    }
+
+    function collapseDetails(target) {
+        const details = target.querySelector('.match-details');
+        if (!details) return;
+        if (details.dataset.expanded !== '1') return;
+        details.dataset.expanded = '0';
+        details.style.transition = 'max-height 0.3s ease, margin-top 0.25s ease, opacity 0.2s ease';
+        details.style.maxHeight = '0px';
+        details.style.opacity = '0';
+        details.style.marginTop = '0';
+    }
+
+    function setupHoverExpand() {
+        // Event delegation so dynamically-rendered cards work
+        document.body.addEventListener('mouseover', e => {
+            const target = e.target.closest('.hover-target');
+            if (!target) return;
+            // Reset any explicit max-height to allow measurement
+            const details = target.querySelector('.match-details');
+            if (details && details.dataset.expanded !== '1') {
+                // Briefly remove inline max-height so scrollHeight reflects true height
+                const prev = details.style.maxHeight;
+                details.style.maxHeight = 'none';
+                const h = details.scrollHeight;
+                details.style.maxHeight = prev || '0px';
+                details._naturalHeight = h;
+            }
+            expandDetails(target);
+        });
+
+        document.body.addEventListener('mouseout', e => {
+            const target = e.target.closest('.hover-target');
+            if (!target) return;
+            // Only collapse if leaving the hover-target itself (not entering a child)
+            const related = e.relatedTarget;
+            if (related && target.contains(related)) return;
+            collapseDetails(target);
+        });
+    }
+
+    function rebindHoverExpand() {
+        // No-op: event delegation handles new elements automatically
+    }
+
+    // =============================
+    // OVERLAY
+    // =============================
+    const summaryCache = new Map();
+
+    function findMatchById(id) {
+        id = String(id);
+        for (const g in matchData.groups) {
+            const m = matchData.groups[g].find(x => String(x.id) === id);
+            if (m) return m;
+        }
+        for (const r in matchData.knockout) {
+            const m = matchData.knockout[r].find(x => String(x.id) === id);
+            if (m) return m;
+        }
+        return null;
+    }
+
+    function getStatValue(stats, name) {
+        if (!stats) return 0;
+        const s = stats.find(x => x.name === name);
+        if (!s) return 0;
+        const v = parseFloat(s.displayValue);
+        return isNaN(v) ? 0 : v;
+    }
+
+    function statNameLabel(name) {
+        const map = {
+            possessionPct: 'Possession',
+            totalShots: 'Total Shots',
+            shotsOnTarget: 'Shots on Target',
+            wonCorners: 'Corners',
+            foulsCommitted: 'Fouls',
+            goalAssists: 'Goal Assists',
+            shotAssists: 'Shot Assists',
+            totalGoals: 'Goals',
+            appearances: 'Appearances'
+        };
+        return map[name] || name;
+    }
+
+    function buildOverlayHeader(match) {
+        const pensHtml = match.penalties ? `<div class="ov-score-pens">(${match.penalties.replace(' pens','')})</div>` : '';
+        return `
+            <div class="ov-header">
+                <div class="ov-team">
+                    <img src="https://flagcdn.com/48x36/${match.code1.toLowerCase()}.png" alt="${match.team1}" class="ov-team-flag">
+                    <div class="ov-team-name">${match.team1}</div>
+                </div>
+                <div>
+                    <div class="ov-score">${match.score1 || '0'} - ${match.score2 || '0'}</div>
+                    ${pensHtml}
+                </div>
+                <div class="ov-team">
+                    <img src="https://flagcdn.com/48x36/${match.code2.toLowerCase()}.png" alt="${match.team2}" class="ov-team-flag">
+                    <div class="ov-team-name">${match.team2}</div>
+                </div>
+            </div>
+            <div class="ov-meta">
+                📅 ${formatTime(match.time)}<br>
+                📍 ${match.stadium}${match.htScore ? ` &nbsp;|&nbsp; HT: ${match.htScore[0]}-${match.htScore[1]}` : ''}
+                ${match._espnAttendance ? `<br>👥 Attendance: ${match._espnAttendance.toLocaleString()}` : ''}
+            </div>
+        `;
+    }
+
+    function buildGoalsSection(match) {
+        const allGoals = [];
+        if (match.goals1) match.goals1.forEach(g => allGoals.push({ ...g, team: 1, teamName: match.team1, code: match.code1 }));
+        if (match.goals2) match.goals2.forEach(g => allGoals.push({ ...g, team: 2, teamName: match.team2, code: match.code2 }));
+
+        // Sort by minute (numeric)
+        allGoals.sort((a, b) => {
+            const ma = parseInt(a.minute) || 0;
+            const mb = parseInt(b.minute) || 0;
+            return ma - mb;
+        });
+
+        if (allGoals.length === 0) {
+            return `
+                <div class="ov-section">
+                    <div class="ov-section-title">⚽ Goals</div>
+                    <div class="ov-goals-list"><div class="ov-goal-item" style="justify-content:center; color: var(--text-muted);">No goals scored</div></div>
+                </div>
+            `;
+        }
+
+        const items = allGoals.map(g => {
+            let typeLabel = '';
+            if (g.owngoal) typeLabel = 'OG';
+            else if (g.penalty) typeLabel = 'Penalty';
+            return `
+                <div class="ov-goal-item">
+                    <img src="https://flagcdn.com/24x18/${g.code.toLowerCase()}.png" alt="" class="flag-icon" style="width:18px;">
+                    <span class="ov-goal-minute">${g.minute}'</span>
+                    <span class="ov-goal-player">${g.name}</span>
+                    ${typeLabel ? `<span class="ov-goal-type">${typeLabel}</span>` : ''}
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="ov-section">
+                <div class="ov-section-title">⚽ Goals</div>
+                <div class="ov-goals-list">${items}</div>
+            </div>
+        `;
+    }
+
+    function buildCardsSection(match) {
+        const cards = (match._espnDetails || []).filter(d => d.yellowCard || d.redCard);
+        if (cards.length === 0) return '';
+        const items = cards.map(c => {
+            const player = (c.athletesInvolved && c.athletesInvolved[0]) ? c.athletesInvolved[0].displayName : 'Player';
+            return `
+                <div class="ov-card-item">
+                    <div class="ov-card-icon ${c.redCard ? 'red' : 'yellow'}"></div>
+                    <span class="ov-card-minute">${c.clock?.displayValue || ''}</span>
+                    <span class="ov-card-player">${player}</span>
+                </div>
+            `;
+        }).join('');
+        return `
+            <div class="ov-section">
+                <div class="ov-section-title">🟨 Cards</div>
+                ${items}
+            </div>
+        `;
+    }
+
+    function buildStatsSection(match) {
+        if (!match._espnStats) return '';
+        const statKeys = ['possessionPct', 'totalShots', 'shotsOnTarget', 'wonCorners', 'foulsCommitted', 'shotAssists'];
+        const rows = statKeys.map(key => {
+            const left = getStatValue(match._espnStats.home, key);
+            const right = getStatValue(match._espnStats.away, key);
+            const total = left + right;
+            let leftPct = 50, rightPct = 50;
+            if (total > 0) {
+                leftPct = (left / total) * 100;
+                rightPct = (right / total) * 100;
+            }
+            return `
+                <div>
+                    <div class="ov-stat-label">${statNameLabel(key)}</div>
+                    <div class="ov-stat-row">
+                        <span class="ov-stat-value left">${left}${key === 'possessionPct' ? '%' : ''}</span>
+                        <div class="ov-stat-bar-container">
+                            <div class="ov-stat-bar left" style="width: ${leftPct}%"></div>
+                            <div class="ov-stat-bar right" style="width: ${rightPct}%"></div>
+                        </div>
+                        <span class="ov-stat-value">${right}${key === 'possessionPct' ? '%' : ''}</span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        if (!rows) return '';
+        return `
+            <div class="ov-section">
+                <div class="ov-section-title">📊 Match Stats</div>
+                <div class="ov-stats-list">${rows}</div>
+            </div>
+        `;
+    }
+
+    function buildLineupPlayer(p) {
+        const name = p.athlete?.displayName || 'Unknown';
+        const jersey = p.athlete?.jersey || '';
+        const pos = p.athlete?.position?.abbreviation || p.position?.abbreviation || '';
+        const starter = p.starter !== false;
+        return `
+            <div class="ov-lineup-player">
+                <span class="ov-lineup-jersey">${jersey}</span>
+                <span>${name}</span>
+                ${pos ? `<span class="ov-lineup-pos">${pos}</span>` : ''}
+            </div>
+        `;
+    }
+
+    function buildLineupsSection(summaryData) {
+        if (!summaryData || !summaryData.rosters) return '';
+        const rosters = summaryData.rosters || [];
+        if (rosters.length < 2) return '';
+        const cols = rosters.slice(0, 2).map(r => {
+            const teamName = r.team?.displayName || r.team?.name || 'Team';
+            const flagCode = findCodeForTeamName(teamName);
+
+            const starters = (r.roster || []).filter(p => p.starter);
+            const subs = (r.roster || []).filter(p => !p.starter);
+
+            const formation = r.formation ? `<span style="color: var(--text-muted); font-size: 0.7rem; margin-left: 0.3rem;">(${r.formation})</span>` : '';
+
+            return `
+                <div class="ov-lineup-col">
+                    <h4>${getFlagHtml(flagCode)} ${teamName} ${formation}</h4>
+                    <div class="ov-lineup-subsection">
+                        <div class="ov-lineup-subsection-title">Starting XI</div>
+                        ${starters.length ? starters.map(buildLineupPlayer).join('') : '<div class="ov-lineup-empty">Not available</div>'}
+                    </div>
+                    <div class="ov-lineup-subsection">
+                        <div class="ov-lineup-subsection-title">Substitutes</div>
+                        ${subs.length ? subs.map(buildLineupPlayer).join('') : '<div class="ov-lineup-empty">Not available</div>'}
+                    </div>
+                </div>
+            `;
+        }).join('');
+        return `
+            <div class="ov-section">
+                <div class="ov-section-title">👥 Lineups</div>
+                <div class="ov-lineups">${cols}</div>
+            </div>
+        `;
+    }
+
+    function findCodeForTeamName(teamName) {
+        if (!teamName) return 'un';
+        // Direct match
+        if (COUNTRY_CODES[teamName]) return COUNTRY_CODES[teamName];
+        // Try via ESPN name map (ESPN → internal name → code)
+        const internalName = ESPN_NAME_MAP[teamName] || teamName;
+        if (COUNTRY_CODES[internalName]) return COUNTRY_CODES[internalName];
+        // Try case-insensitive contains
+        for (const [name, code] of Object.entries(COUNTRY_CODES)) {
+            if (teamName.includes(name) || name.includes(teamName)) return code;
+        }
+        return 'un';
+    }
+
+    function buildHeadlineSection(match) {
+        if (!match._espnHeadline) return '';
+        return `
+            <div class="ov-headline">
+                <strong>${match._espnHeadline.shortLinkText || 'Match Recap'}</strong>
+                ${match._espnHeadline.description || ''}
+            </div>
+        `;
+    }
+
+    async function fetchMatchSummary(espnEventId) {
+        if (summaryCache.has(espnEventId)) return summaryCache.get(espnEventId);
+        try {
+            const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/summary?event=${espnEventId}`;
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error('Summary not available');
+            const data = await resp.json();
+            summaryCache.set(espnEventId, data);
+            return data;
+        } catch (e) {
+            console.warn('ESPN summary unavailable:', e.message);
+            summaryCache.set(espnEventId, null);
+            return null;
+        }
+    }
+
+    async function openMatchOverlay(matchId) {
+        const match = findMatchById(matchId);
+        if (!match) return;
+        const overlay = document.getElementById('match-overlay');
+        const body = document.getElementById('overlay-body');
+
+        // Build initial content (without lineups yet)
+        let html = buildHeadlineSection(match);
+        html += buildOverlayHeader(match);
+        html += buildGoalsSection(match);
+        html += buildCardsSection(match);
+        html += buildStatsSection(match);
+        html += `<div id="ov-lineups-container" class="ov-section"><div class="ov-section-title">👥 Lineups</div><div class="ov-loading">Loading lineups</div></div>`;
+
+        body.innerHTML = html;
+        overlay.classList.remove('hidden');
+        document.body.classList.add('overlay-open');
+
+        // Fetch lineups async
+        if (match._espnEventId) {
+            const summary = await fetchMatchSummary(match._espnEventId);
+            const lineupsContainer = document.getElementById('ov-lineups-container');
+            if (lineupsContainer) {
+                const lineupsHtml = buildLineupsSection(summary);
+                if (lineupsHtml) {
+                    lineupsContainer.outerHTML = lineupsHtml;
+                } else {
+                    lineupsContainer.innerHTML = `<div class="ov-section-title">👥 Lineups</div><div class="ov-lineup-empty">Lineups not available for this match</div>`;
+                }
+            }
+        } else {
+            const lineupsContainer = document.getElementById('ov-lineups-container');
+            if (lineupsContainer) {
+                lineupsContainer.innerHTML = `<div class="ov-section-title">👥 Lineups</div><div class="ov-lineup-empty">Lineups not available yet</div>`;
+            }
+        }
+    }
+
+    function closeMatchOverlay() {
+        const overlay = document.getElementById('match-overlay');
+        if (overlay) overlay.classList.add('hidden');
+        document.body.classList.remove('overlay-open');
+    }
+
+    function setupOverlay() {
+        const overlay = document.getElementById('match-overlay');
+        const backdrop = overlay.querySelector('.overlay-backdrop');
+        const closeBtn = overlay.querySelector('.overlay-close');
+
+        backdrop.addEventListener('click', closeMatchOverlay);
+        closeBtn.addEventListener('click', closeMatchOverlay);
+
+        document.addEventListener('keydown', e => {
+            if (e.key === 'Escape' && !overlay.classList.contains('hidden')) {
+                closeMatchOverlay();
+            }
+        });
+
+        // Event delegation for info buttons (works across re-renders)
+        document.body.addEventListener('click', e => {
+            const btn = e.target.closest('.match-info-btn');
+            if (btn) {
+                e.stopPropagation();
+                const id = btn.dataset.matchId;
+                openMatchOverlay(id);
+            }
+        });
+    }
+
+    // =============================
+    // INIT
+    // =============================
+    try {
+        await loadData();
+        renderAll();
+    } catch (e) {
+        console.error(e);
+    }
+    populateFilterOptions();
+    setupFilterBar();
+    setupHoverExpand();
+    setupOverlay();
+    applyFilters();
+
     // Auto-refresh live scores every 30 seconds
-    setInterval(() => {
-        loadData();
+    setInterval(async () => {
+        try {
+            await loadData();
+            renderAll();
+            populateFilterOptions();
+            rebindHoverExpand();
+            applyFilters();
+        } catch (e) {
+            console.warn('Auto-refresh failed:', e.message);
+        }
     }, 30000);
 });

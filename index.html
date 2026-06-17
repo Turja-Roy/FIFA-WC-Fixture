@@ -17,6 +17,57 @@
         <h1>World Cup 2026 Tracker</h1>
     </header>
 
+    <div id="filter-bar">
+        <div class="filter-bar-inner">
+            <div class="filter-team-wrap">
+                <input type="text" id="filter-team" placeholder="🔍 Search team..." autocomplete="off">
+                <div id="team-suggestions" class="suggestions-dropdown hidden"></div>
+            </div>
+            <div class="filter-date-wrap">
+                <label class="filter-label">From</label>
+                <input type="date" id="filter-date-from">
+            </div>
+            <div class="filter-date-wrap">
+                <label class="filter-label">To</label>
+                <input type="date" id="filter-date-to">
+            </div>
+            <select id="filter-city" class="filter-select">
+                <option value="">All Cities</option>
+            </select>
+            <select id="filter-group" class="filter-select">
+                <option value="">All Groups</option>
+                <option value="A">Group A</option>
+                <option value="B">Group B</option>
+                <option value="C">Group C</option>
+                <option value="D">Group D</option>
+                <option value="E">Group E</option>
+                <option value="F">Group F</option>
+                <option value="G">Group G</option>
+                <option value="H">Group H</option>
+                <option value="I">Group I</option>
+                <option value="J">Group J</option>
+                <option value="K">Group K</option>
+                <option value="L">Group L</option>
+            </select>
+            <select id="filter-stage" class="filter-select">
+                <option value="">All Stages</option>
+                <option value="Group Stage">Group Stage</option>
+                <option value="Round of 32">Round of 32</option>
+                <option value="Round of 16">Round of 16</option>
+                <option value="Quarter-finals">Quarter-finals</option>
+                <option value="Semi-finals">Semi-finals</option>
+                <option value="Final">Final</option>
+            </select>
+            <div class="status-chips">
+                <button class="chip" data-status="completed" type="button">Completed</button>
+                <button class="chip" data-status="live" type="button">Live</button>
+                <button class="chip" data-status="upcoming" type="button">Upcoming</button>
+            </div>
+            <button id="filter-clear" class="filter-clear-btn" type="button">✕ Clear</button>
+        </div>
+        <div id="filter-status" class="filter-status hidden"></div>
+    </div>
+
     <main>
         <section id="upcoming-matches-section">
             <h2>Upcoming Matches</h2>
@@ -55,6 +106,15 @@
 
     <!-- Tooltip Element -->
     <div id="tooltip" class="tooltip hidden"></div>
+
+    <!-- Match Stats Overlay -->
+    <div id="match-overlay" class="overlay hidden">
+        <div class="overlay-backdrop"></div>
+        <div class="overlay-content">
+            <button class="overlay-close" type="button" aria-label="Close">&times;</button>
+            <div id="overlay-body"></div>
+        </div>
+    </div>
 
     <script src="app.js"></script>
 </body>
