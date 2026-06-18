@@ -234,6 +234,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     let espnHome = null, espnAway = null;
                     for (const c of (comp.competitors || [])) {
                         const entry = {
+                            id: c.id,
                             name: c.team?.displayName || '',
                             score: c.score || '',
                             homeAway: c.homeAway,
@@ -270,6 +271,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                             if (statusState === 'in' || statusState === 'post') {
                                 m.score1 = espnHome.score;
                                 m.score2 = espnAway.score;
+                                const parsed = parseEspnGoals(m._espnDetails, espnHome.id, espnAway.id);
+                                m.goals1 = parsed[0];
+                                m.goals2 = parsed[1];
                             }
                             if (statusState === 'in') {
                                 m._liveDetail = statusDetail; // e.g. "61'"
@@ -292,6 +296,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                             if (statusState === 'in' || statusState === 'post') {
                                 m.score1 = espnAway.score;
                                 m.score2 = espnHome.score;
+                                const parsed = parseEspnGoals(m._espnDetails, espnAway.id, espnHome.id);
+                                m.goals1 = parsed[0];
+                                m.goals2 = parsed[1];
                             }
                             if (statusState === 'in') {
                                 m._liveDetail = statusDetail;
@@ -321,6 +328,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.warn('ESPN live scores unavailable:', e.message);
         }
+    }
+
+    function parseEspnGoals(details, team1Id, team2Id) {
+        const g1 = [], g2 = [];
+        for (const d of (details || [])) {
+            if (!d.scoringPlay) continue;
+            const player = d.athletesInvolved && d.athletesInvolved[0]
+                ? d.athletesInvolved[0].displayName
+                : 'Unknown';
+            const minute = (d.clock && d.clock.displayValue || '').replace("'", '');
+            const goal = {
+                name: player,
+                minute,
+                owngoal: !!d.ownGoal,
+                penalty: !!d.penaltyKick
+            };
+            const tid = d.team && d.team.id;
+            if (!!d.ownGoal) {
+                if (tid == team1Id) g2.push(goal);
+                else if (tid == team2Id) g1.push(goal);
+            } else {
+                if (tid == team1Id) g1.push(goal);
+                else if (tid == team2Id) g2.push(goal);
+            }
+        }
+        return [g1, g2];
     }
 
     function saveScore(matchId, s1, s2, pens = null) {
@@ -1341,6 +1374,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     let espnHome = null, espnAway = null;
                     for (const c of (comp.competitors || [])) {
                         const entry = {
+                            id: c.id,
                             name: c.team?.displayName || '',
                             score: c.score || '',
                             homeAway: c.homeAway,
@@ -1352,7 +1386,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (!espnHome || !espnAway) continue;
                     const normHome = ESPN_NAME_MAP[espnHome.name] || espnHome.name;
                     const normAway = ESPN_NAME_MAP[espnAway.name] || espnAway.name;
-                    const doUpdate = function(m, hScore, aScore) {
+                    const doUpdate = function(m, hScore, aScore, team1Id, team2Id) {
                         m._espnEventId = ev.id;
                         m._espnStatusState = statusState;
                         m._espnDetails = comp.details || [];
@@ -1366,14 +1400,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (statusState === 'in' || statusState === 'post') {
                             m.score1 = hScore;
                             m.score2 = aScore;
+                            const parsed = parseEspnGoals(m._espnDetails, team1Id, team2Id);
+                            m.goals1 = parsed[0];
+                            m.goals2 = parsed[1];
                         }
                         if (statusState === 'in') m._liveDetail = statusDetail;
                     };
                     if (match.team1 === normHome && match.team2 === normAway) {
-                        doUpdate(match, espnHome.score, espnAway.score);
+                        doUpdate(match, espnHome.score, espnAway.score, espnHome.id, espnAway.id);
                         return true;
                     } else if (match.team1 === normAway && match.team2 === normHome) {
-                        doUpdate(match, espnAway.score, espnHome.score);
+                        doUpdate(match, espnAway.score, espnHome.score, espnAway.id, espnHome.id);
                         return true;
                     }
                 }
