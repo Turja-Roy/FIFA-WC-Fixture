@@ -1090,6 +1090,297 @@ document.addEventListener('DOMContentLoaded', async () => {
     // OVERLAY
     // =============================
     const summaryCache = new Map();
+    const espnDateCache = new Map();
+    const rosterCache = new Map();
+    const pendingRosters = new Map();
+
+    async function fetchTeamRoster(teamId) {
+        if (!teamId) return null;
+        if (rosterCache.has(teamId)) return rosterCache.get(teamId);
+        if (pendingRosters.has(teamId)) return pendingRosters.get(teamId);
+        const promise = (async () => {
+            try {
+                const url = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/teams/' + teamId + '/roster';
+                const resp = await fetch(url);
+                if (!resp.ok) throw new Error('Roster not available');
+                const data = await resp.json();
+                rosterCache.set(teamId, data);
+                pendingRosters.delete(teamId);
+                return data;
+            } catch (e) {
+                console.warn('ESPN roster unavailable:', e.message);
+                rosterCache.set(teamId, null);
+                pendingRosters.delete(teamId);
+                return null;
+            }
+        })();
+        pendingRosters.set(teamId, promise);
+        return promise;
+    }
+
+    // Get a player's position abbreviation. ESPN puts it on the roster
+    // entry (p.position), not inside the athlete object.
+    function playerPosAbbrev(p) {
+        // Bench entries carry a generic "SUB" position; the real role lives on
+        // the athlete (filled from the team roster). Ignore "SUB" so it falls
+        // through to the natural position.
+        const entry = p.position && p.position.abbreviation;
+        if (entry && entry.toUpperCase() !== 'SUB') return entry;
+        return (p.athlete && p.athlete.position && p.athlete.position.abbreviation) || entry || '';
+    }
+
+    // Derive vertical depth (0 = GK ... 6 = striker) and lateral position
+    // (-1 = left ... +1 = right) from an ESPN position abbreviation such as
+    // "CD-R", "AM-L", "RB", "RWB", "CDM". Depth orders players back→front;
+    // lateral orders them left→right within a row.
+    function posDepthLateral(abbrev) {
+        let a = (abbrev || '').toUpperCase().trim();
+        let sign = 0;
+        const suffix = a.match(/-(R|L|C)$/);
+        if (suffix) {
+            sign = suffix[1] === 'R' ? 1 : suffix[1] === 'L' ? -1 : 0;
+            a = a.replace(/-(R|L|C)$/, '');
+        }
+        // No position abbreviation starts with R/L unless it is a right/left role.
+        if (sign === 0) {
+            if (a[0] === 'R') sign = 1;
+            else if (a[0] === 'L') sign = -1;
+        }
+        const base = a.replace(/^[RL]/, ''); // RB→B, RW→W, RDM→DM, RCB→CB
+        let depth;
+        if (a === 'G' || a === 'GK') depth = 0;
+        else if (base === 'SW') depth = 0.8;
+        else if (['WB'].includes(base)) depth = 1.5;
+        else if (['DM', 'CDM'].includes(base)) depth = 2;
+        else if (['B', 'CB', 'CD', 'D', 'DEF'].includes(base) || base[0] === 'D') depth = 1;
+        else if (['AM', 'CAM'].includes(base)) depth = 4;
+        else if (['M', 'CM', 'MID'].includes(base) || base[0] === 'M') depth = 3;
+        else if (['W'].includes(base) || base[0] === 'W') depth = 5;
+        else if (['SS', 'WF'].includes(base)) depth = 5.3;
+        else if (['CF'].includes(base)) depth = 5.5;
+        else if (['ST', 'F', 'FW', 'FWD'].includes(base) || base[0] === 'F') depth = 6;
+        else depth = 3;
+        // Wide roles (full-/wing-backs, wingers, wide mids) sit further out
+        // than central players sharing the same row.
+        const wideMid = !suffix && base === 'M'; // LM/RM, not CM-L/CM-R
+        const mag = (['B', 'WB', 'W'].includes(base) || wideMid) ? 2 : 1;
+        return { depth, lat: sign * mag };
+    }
+
+    // Arrange starters into pitch rows (index 0 = GK ... last = most
+    // advanced) using their real positions, sliced to match the formation
+    // string. Works for any number of rows (e.g. 5-2-3-1, 4-1-2-1-2).
+    function arrangeByFormation(starters, formation) {
+        if (!starters.length) return [];
+        const ann = starters.map(p => ({ p, ...posDepthLateral(playerPosAbbrev(p)) }));
+        const gkArr = ann.filter(x => x.depth === 0);
+        let outfield = ann.filter(x => x.depth > 0);
+        const gk = gkArr.length ? [gkArr[0].p] : [];
+        if (gkArr.length > 1) outfield = outfield.concat(gkArr.slice(1));
+        outfield.sort((a, b) => a.depth - b.depth);
+
+        const sortRow = arr => arr.slice().sort((a, b) => a.lat - b.lat).map(x => x.p);
+        const rows = [];
+        if (gk.length) rows.push(gk);
+
+        const counts = parseFormation(formation);
+        if (counts && counts.length) {
+            let i = 0;
+            for (const c of counts) {
+                const slice = outfield.slice(i, i + c);
+                i += c;
+                if (slice.length) rows.push(sortRow(slice));
+            }
+            if (i < outfield.length) rows.push(sortRow(outfield.slice(i)));
+        } else {
+            const bands = {};
+            for (const x of outfield) {
+                const k = Math.round(x.depth);
+                (bands[k] = bands[k] || []).push(x);
+            }
+            Object.keys(bands).sort((a, b) => a - b).forEach(k => rows.push(sortRow(bands[k])));
+        }
+        return rows;
+    }
+
+    // Index match key events by athlete id → goals/assists/cards/sub info.
+    function buildEventsIndex(keyEvents) {
+        const idx = new Map();
+        const get = id => {
+            id = String(id);
+            if (!idx.has(id)) idx.set(id, { goals: 0, og: 0, assists: 0, yellow: 0, red: 0, subOut: null, subIn: null });
+            return idx.get(id);
+        };
+        for (const e of (keyEvents || [])) {
+            const tp = (e.type && e.type.type) || '';
+            const txt = (e.type && e.type.text) || '';
+            const parts = e.participants || [];
+            const clock = (e.clock && e.clock.displayValue) || '';
+            const aid = parts[0] && parts[0].athlete && parts[0].athlete.id;
+            const bid = parts[1] && parts[1].athlete && parts[1].athlete.id;
+            if (tp === 'goal' || /goal|penalty - scored/i.test(txt)) {
+                if (/own goal/i.test(txt)) { if (aid) get(aid).og++; }
+                else { if (aid) get(aid).goals++; if (bid) get(bid).assists++; }
+            } else if (tp === 'substitution' || /substitution/i.test(txt)) {
+                if (aid) get(aid).subIn = clock;   // participant 0 = player coming on
+                if (bid) get(bid).subOut = clock;  // participant 1 = player going off
+            } else if (tp === 'yellow-card' || /yellow card/i.test(txt)) {
+                if (aid) get(aid).yellow++;
+            } else if (tp === 'red-card' || /red card|sent off/i.test(txt)) {
+                if (aid) get(aid).red++;
+            }
+        }
+        return idx;
+    }
+
+    // Build the small icon cluster (goal/assist/cards/sub) for a player.
+    function playerEventIconsHtml(p, eventsIdx) {
+        const id = p && p.athlete && p.athlete.id;
+        const ev = (id && eventsIdx) ? eventsIdx.get(String(id)) : null;
+        let s = '';
+        if (ev) {
+            for (let i = 0; i < ev.goals; i++) s += '<span class="ov-ic ov-ic-goal" title="Goal">⚽</span>';
+            for (let i = 0; i < ev.og; i++) s += '<span class="ov-ic ov-ic-goal ov-ic-og" title="Own goal">⚽</span>';
+            for (let i = 0; i < ev.assists; i++) s += '<span class="ov-ic ov-ic-assist" title="Assist">👟</span>';
+            if (ev.yellow) s += '<span class="ov-ic ov-ic-card ov-ic-yellow" title="Yellow card"></span>';
+            if (ev.red) s += '<span class="ov-ic ov-ic-card ov-ic-red" title="Red card"></span>';
+        }
+        // subbedOut from roster entry (covers starters replaced); add minute if known
+        if (p && p.subbedOut) {
+            const m = ev && ev.subOut ? ' ' + ev.subOut : '';
+            s += '<span class="ov-ic ov-ic-subout" title="Substituted off' + m + '">↓</span>';
+        }
+        return s ? '<span class="ov-pitch-icons">' + s + '</span>' : '';
+    }
+
+    const coreRosterCache = new Map();
+
+    async function fetchCoreRoster(espnEventId, teamId) {
+        const cacheKey = espnEventId + '_' + teamId;
+        if (coreRosterCache.has(cacheKey)) return coreRosterCache.get(cacheKey);
+        try {
+            const url = 'http://sports.core.api.espn.com/v2/sports/soccer/leagues/fifa.world/events/' + espnEventId + '/competitions/' + espnEventId + '/competitors/' + teamId + '/roster?lang=en&region=us';
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error('Core roster unavailable');
+            const data = await resp.json();
+            coreRosterCache.set(cacheKey, data);
+            return data;
+        } catch (e) {
+            console.warn('Core roster fetch failed:', e.message);
+            coreRosterCache.set(cacheKey, null);
+            return null;
+        }
+    }
+
+    function buildCoreRosterIndex(coreData) {
+        const idx = new Map();
+        if (!coreData || !coreData.entries) return idx;
+        for (const e of coreData.entries) {
+            if (!e || !e.playerId) continue;
+            let posId = '';
+            if (e.position) {
+                if (e.position.id) posId = String(e.position.id);
+                else if (e.position['$ref']) {
+                    const m = e.position['$ref'].match(/\/positions\/(\d+)/);
+                    if (m) posId = m[1];
+                }
+            }
+            idx.set(String(e.playerId), {
+                jersey: e.jersey || '',
+                formationPlace: e.formationPlace || 0,
+                starter: !!e.starter,
+                positionId: posId
+            });
+        }
+        return idx;
+    }
+
+    function positionIdToAbbrev(posId) {
+        const map = { '1': 'G', '2': 'D', '3': 'M', '4': 'F' };
+        return map[String(posId)] || '';
+    }
+
+    function buildRosterIndex(rosterData) {
+        const idx = new Map();
+        if (!rosterData || !rosterData.athletes) return idx;
+        for (const a of rosterData.athletes) {
+            if (!a || !a.id) continue;
+            idx.set(String(a.id), {
+                jersey: a.jersey || '',
+                position: a.position?.abbreviation || '',
+                positionName: a.position?.name || ''
+            });
+        }
+        return idx;
+    }
+
+    async function fetchEspnForMatch(match) {
+        const dateStr = match.time ? match.time.substring(0, 10).replace(/-/g, '') : null;
+        if (!dateStr) return false;
+        const cacheKey = 'espn_date_' + dateStr;
+        let data;
+        if (espnDateCache.has(cacheKey)) {
+            data = espnDateCache.get(cacheKey);
+        } else {
+            try {
+                const url = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=' + dateStr;
+                const resp = await fetch(url);
+                data = await resp.json();
+                espnDateCache.set(cacheKey, data);
+            } catch (e) {
+                console.warn('ESPN date fetch failed:', e.message);
+                espnDateCache.set(cacheKey, null);
+                return false;
+            }
+        }
+        if (data && !match._espnEventId) {
+            for (const ev of (data.events || [])) {
+                for (const comp of (ev.competitions || [])) {
+                    const statusState = comp.status?.type?.state;
+                    const statusDetail = comp.status?.type?.detail;
+                    let espnHome = null, espnAway = null;
+                    for (const c of (comp.competitors || [])) {
+                        const entry = {
+                            name: c.team?.displayName || '',
+                            score: c.score || '',
+                            homeAway: c.homeAway,
+                            statistics: c.statistics || []
+                        };
+                        if (c.homeAway === 'home') espnHome = entry;
+                        else espnAway = entry;
+                    }
+                    if (!espnHome || !espnAway) continue;
+                    const normHome = ESPN_NAME_MAP[espnHome.name] || espnHome.name;
+                    const normAway = ESPN_NAME_MAP[espnAway.name] || espnAway.name;
+                    const doUpdate = function(m, hScore, aScore) {
+                        m._espnEventId = ev.id;
+                        m._espnStatusState = statusState;
+                        m._espnDetails = comp.details || [];
+                        m._espnStats = { home: espnHome.statistics, away: espnAway.statistics };
+                        m._espnVenue = comp.venue || null;
+                        m._espnAttendance = comp.attendance || 0;
+                        m._espnHeadline = (comp.headlines && comp.headlines[0]) ? comp.headlines[0] : null;
+                        m._espnBroadcasts = comp.broadcasts || null;
+                        m._espnHomeName = normHome;
+                        m._espnAwayName = normAway;
+                        if (statusState === 'in' || statusState === 'post') {
+                            m.score1 = hScore;
+                            m.score2 = aScore;
+                        }
+                        if (statusState === 'in') m._liveDetail = statusDetail;
+                    };
+                    if (match.team1 === normHome && match.team2 === normAway) {
+                        doUpdate(match, espnHome.score, espnAway.score);
+                        return true;
+                    } else if (match.team1 === normAway && match.team2 === normHome) {
+                        doUpdate(match, espnAway.score, espnHome.score);
+                        return true;
+                    }
+                }
+            }
+        }
+        return !!match._espnEventId;
+    }
 
     function findMatchById(id) {
         id = String(id);
@@ -1251,53 +1542,178 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
     }
 
-    function buildLineupPlayer(p) {
-        const name = p.athlete?.displayName || 'Unknown';
-        const jersey = p.athlete?.jersey || '';
-        const pos = p.athlete?.position?.abbreviation || p.position?.abbreviation || '';
-        const starter = p.starter !== false;
+    function posCategory(abbrev) {
+        if (!abbrev) return 'MID';
+        const a = abbrev.toUpperCase();
+        if (a === 'GK' || a === 'G') return 'GK';
+        if (['DM', 'CDM', 'RDM', 'LDM'].includes(a)) return 'MID';
+        if (a.startsWith('D') || a === 'CB' || a === 'LB' || a === 'RB' || a === 'RC' || a === 'LC' || a === 'SW') return 'DEF';
+        if (a.startsWith('F') || a === 'ST' || a === 'CF' || a === 'LW' || a === 'RW' || a === 'WF' || a === 'SS') return 'FWD';
+        return 'MID';
+    }
+
+    function parseFormation(formation) {
+        if (!formation) return null;
+        const parts = formation.split('-').map(Number);
+        if (parts.some(isNaN) || parts.length < 1) return null;
+        return parts;
+    }
+
+
+    function buildPitchPlayerHtml(p, side, eventsIdx) {
+        if (!p) return '<div class="ov-pitch-player"><span class="ov-pitch-num">?</span></div>';
+        const name = p.athlete?.displayName || 'Player';
+        const jersey = p.athlete?.jersey || p.jersey || '';
+        const pos = playerPosAbbrev(p);
+        const cls = side === 'away' ? ' ov-pitch-player-away' : '';
+        const icons = playerEventIconsHtml(p, eventsIdx);
         return `
-            <div class="ov-lineup-player">
-                <span class="ov-lineup-jersey">${jersey}</span>
-                <span>${name}</span>
-                ${pos ? `<span class="ov-lineup-pos">${pos}</span>` : ''}
+            <div class="ov-pitch-player${cls}" title="${name} (${pos})">
+                <span class="ov-pitch-num">${jersey}${icons}</span>
+                <span class="ov-pitch-name">${name.split(' ').pop()}</span>
             </div>
         `;
     }
 
-    function buildLineupsSection(summaryData) {
+    const POSITION_LABELS = {
+        GK: 'Goalkeeper', G: 'Goalkeeper',
+        DEF: 'Defender', D: 'Defender', CB: 'Defender', LB: 'Defender', RB: 'Defender', RC: 'Defender', LC: 'Defender', SW: 'Defender',
+        MID: 'Midfielder', M: 'Midfielder', DM: 'Midfielder', CDM: 'Midfielder', RDM: 'Midfielder', LDM: 'Midfielder', CM: 'Midfielder', RM: 'Midfielder', LM: 'Midfielder', AM: 'Midfielder',
+        FWD: 'Striker', F: 'Striker', ST: 'Striker', CF: 'Striker', LW: 'Striker', RW: 'Striker', WF: 'Striker', SS: 'Striker'
+    };
+
+    function getPosLabel(abbrev) {
+        if (!abbrev) return '';
+        const a = abbrev.toUpperCase();
+        return POSITION_LABELS[a] || POSITION_LABELS[posCategory(a)] || '';
+    }
+
+    function buildSubsList(subs, flagCode, teamName, eventsIdx) {
+        const items = subs.map(s => {
+            const n = s.athlete?.jersey || s.jersey || '?';
+            const nm = s.athlete?.displayName || 'Player';
+            const pos = playerPosAbbrev(s);
+            const posLabel = getPosLabel(pos);
+            const id = s.athlete?.id;
+            const ev = (id && eventsIdx) ? eventsIdx.get(String(id)) : null;
+            let icons = playerEventIconsHtml(s, eventsIdx);
+            if (s.subbedIn) {
+                const m = ev && ev.subIn ? ' ' + ev.subIn : '';
+                icons += `<span class="ov-ic ov-ic-subin" title="Substituted on${m}">↑</span>`;
+            }
+            return `<div class="ov-pitch-sub"><span class="ov-pitch-sub-num">${n}</span> <span class="ov-pitch-sub-name">${nm}</span>${posLabel ? ` <span class="ov-pitch-sub-pos">(${posLabel})</span>` : ''}${icons ? ` <span class="ov-pitch-sub-icons">${icons}</span>` : ''}</div>`;
+        });
+        return `
+            <div class="ov-subs-team">
+                <div class="ov-subs-team-header">${getFlagHtml(flagCode)} ${teamName}</div>
+                <div class="ov-subs-list">${items.join('')}</div>
+            </div>
+        `;
+    }
+
+    function enrichRosterData(players, rosterIdx) {
+        if (!rosterIdx || rosterIdx.size === 0) return players;
+        for (const p of players) {
+            if (!p || !p.athlete || !p.athlete.id) continue;
+            const info = rosterIdx.get(String(p.athlete.id));
+            if (info) {
+                if (!p.athlete.jersey && info.jersey) p.athlete.jersey = info.jersey;
+                if (!p.athlete.position && info.position) {
+                    p.athlete.position = { abbreviation: info.position, name: info.positionName };
+                } else if (p.athlete.position && !p.athlete.position.abbreviation && info.position) {
+                    p.athlete.position.abbreviation = info.position;
+                    p.athlete.position.name = info.positionName || info.position;
+                }
+            }
+        }
+        return players;
+    }
+
+    async function buildLineupsSection(summaryData) {
         if (!summaryData || !summaryData.rosters) return '';
         const rosters = summaryData.rosters || [];
         if (rosters.length < 2) return '';
-        const cols = rosters.slice(0, 2).map(r => {
-            const teamName = r.team?.displayName || r.team?.name || 'Team';
-            const flagCode = findCodeForTeamName(teamName);
+        const r1 = rosters[0], r2 = rosters[1];
 
-            const starters = (r.roster || []).filter(p => p.starter);
-            const subs = (r.roster || []).filter(p => !p.starter);
+        const eventId = summaryData.header?.competitions?.[0]?.id || '';
+        const t1Id = r1.team?.id || '';
+        const t2Id = r2.team?.id || '';
 
-            const formation = r.formation ? `<span style="color: var(--text-muted); font-size: 0.7rem; margin-left: 0.3rem;">(${r.formation})</span>` : '';
+        const [coreR1, coreR2, teamRoster1, teamRoster2] = await Promise.all([
+            (eventId && t1Id) ? fetchCoreRoster(eventId, t1Id) : Promise.resolve(null),
+            (eventId && t2Id) ? fetchCoreRoster(eventId, t2Id) : Promise.resolve(null),
+            t1Id ? fetchTeamRoster(t1Id) : Promise.resolve(null),
+            t2Id ? fetchTeamRoster(t2Id) : Promise.resolve(null)
+        ]);
+        const coreIdx1 = buildCoreRosterIndex(coreR1);
+        const coreIdx2 = buildCoreRosterIndex(coreR2);
+        const rosterIdx1 = buildRosterIndex(teamRoster1);
+        const rosterIdx2 = buildRosterIndex(teamRoster2);
 
-            return `
-                <div class="ov-lineup-col">
-                    <h4>${getFlagHtml(flagCode)} ${teamName} ${formation}</h4>
-                    <div class="ov-lineup-subsection">
-                        <div class="ov-lineup-subsection-title">Starting XI</div>
-                        ${starters.length ? starters.map(buildLineupPlayer).join('') : '<div class="ov-lineup-empty">Not available</div>'}
-                    </div>
-                    <div class="ov-lineup-subsection">
-                        <div class="ov-lineup-subsection-title">Substitutes</div>
-                        ${subs.length ? subs.map(buildLineupPlayer).join('') : '<div class="ov-lineup-empty">Not available</div>'}
-                    </div>
-                </div>
-            `;
-        }).join('');
-        return `
-            <div class="ov-section">
-                <div class="ov-section-title">👥 Lineups</div>
-                <div class="ov-lineups">${cols}</div>
-            </div>
-        `;
+        const formation1 = coreR1?.formation?.summary || r1.formation || '';
+        const formation2 = coreR2?.formation?.summary || r2.formation || '';
+
+        let t1Starters = (r1.roster || []).filter(p => p.starter);
+        let t2Starters = (r2.roster || []).filter(p => p.starter);
+
+        t1Starters = enrichRosterData(t1Starters, rosterIdx1);
+        t2Starters = enrichRosterData(t2Starters, rosterIdx2);
+
+        t1Starters = enrichPlaceData(t1Starters, coreIdx1);
+        t2Starters = enrichPlaceData(t2Starters, coreIdx2);
+
+        const eventsIdx = buildEventsIndex(summaryData.keyEvents);
+
+        const t1Rows = arrangeByFormation(t1Starters, formation1);
+        const t2Rows = arrangeByFormation(t2Starters, formation2);
+        const homeRowsHtml = buildPitchRowsFromArranged(t1Rows, 'home', eventsIdx);
+        const awayRowsHtml = buildPitchRowsFromArranged(t2Rows, 'away', eventsIdx);
+
+        const hasLineups = t1Starters.length > 0 || t2Starters.length > 0;
+        if (!hasLineups) {
+            return '<div class="ov-section"><div class="ov-section-title">👥 Lineups</div><div class="ov-pitch-empty">Lineups not available</div></div>';
+        }
+
+        const t1 = { name: r1.team?.displayName || 'Team', code: findCodeForTeamName(r1.team?.displayName || ''), formation: formation1 };
+        const t2 = { name: r2.team?.displayName || 'Team', code: findCodeForTeamName(r2.team?.displayName || ''), formation: formation2 };
+
+        const t1Subs = enrichRosterData((r1.roster || []).filter(p => !p.starter), rosterIdx1);
+        const t2Subs = enrichRosterData((r2.roster || []).filter(p => !p.starter), rosterIdx2);
+
+        const subsHtml = (t1Subs.length || t2Subs.length)
+            ? '<div class="ov-subs-grid">' + buildSubsList(t1Subs, t1.code, t1.name, eventsIdx) + buildSubsList(t2Subs, t2.code, t2.name, eventsIdx) + '</div>'
+            : '';
+
+        return '\n            <div class="ov-section">\n                <div class="ov-section-title">👥 Lineups</div>\n                <div class="ov-pitch-container">\n                    <div class="ov-pitch-team-label ov-pitch-team-home">' + getFlagHtml(t1.code) + ' ' + t1.name + ' <span class="ov-pitch-formation">' + t1.formation + '</span></div>\n                    <div class="ov-pitch">\n                        <div class="ov-pitch-field">\n                            <div class="ov-pitch-markings">\n                                <div class="ov-pitch-outline"></div>\n                                <div class="ov-pitch-halfway"></div>\n                                <div class="ov-pitch-center-circle"></div>\n                                <div class="ov-pitch-penalty-box ov-pitch-penalty-top"></div>\n                                <div class="ov-pitch-penalty-box ov-pitch-penalty-bot"></div>\n                            </div>\n                            <div class="ov-pitch-rows">\n                                <div class="ov-pitch-half ov-pitch-half-home">' + homeRowsHtml + '</div>\n                                <div class="ov-pitch-half ov-pitch-half-away">' + awayRowsHtml + '</div>\n                            </div>\n                        </div>\n                    </div>\n                    <div class="ov-pitch-team-label ov-pitch-team-away">' + getFlagHtml(t2.code) + ' ' + t2.name + ' <span class="ov-pitch-formation">' + t2.formation + '</span></div>\n                </div>\n                ' + subsHtml + '\n            </div>\n        ';
+    }
+
+    function enrichPlaceData(players, coreIdx) {
+        if (!coreIdx || coreIdx.size === 0) return players;
+        for (const p of players) {
+            if (!p || !p.athlete || !p.athlete.id) continue;
+            const info = coreIdx.get(String(p.athlete.id));
+            if (info) {
+                p._formationPlace = info.formationPlace;
+                if (!p.athlete.jersey && info.jersey) p.athlete.jersey = info.jersey;
+                if (!p.athlete.position && info.positionId) {
+                    p.athlete.position = { abbreviation: positionIdToAbbrev(info.positionId), name: '' };
+                } else if (p.athlete.position && !p.athlete.position.abbreviation && info.positionId) {
+                    p.athlete.position.abbreviation = positionIdToAbbrev(info.positionId);
+                }
+            }
+        }
+        return players;
+    }
+
+    function buildPitchRowsFromArranged(rows, side, eventsIdx) {
+        let result = rows.map(row => {
+            // Away team is mirrored vertically (rows reversed) and
+            // horizontally (columns reversed) so both teams read naturally.
+            const cols = side === 'away' ? row.slice().reverse() : row;
+            return '<div class="ov-pitch-row">' + cols.map(p => buildPitchPlayerHtml(p, side, eventsIdx)).join('') + '</div>';
+        });
+        if (side === 'away') result = result.reverse();
+        return result.join('');
     }
 
     function findCodeForTeamName(teamName) {
@@ -1346,6 +1762,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const overlay = document.getElementById('match-overlay');
         const body = document.getElementById('overlay-body');
 
+        // Try to fetch ESPN data for past matches if not already present
+        if (!match._espnEventId) {
+            await fetchEspnForMatch(match);
+        }
+
         // Build initial content (without lineups yet)
         let html = buildHeadlineSection(match);
         html += buildOverlayHeader(match);
@@ -1363,17 +1784,17 @@ document.addEventListener('DOMContentLoaded', async () => {
             const summary = await fetchMatchSummary(match._espnEventId);
             const lineupsContainer = document.getElementById('ov-lineups-container');
             if (lineupsContainer) {
-                const lineupsHtml = buildLineupsSection(summary);
+                const lineupsHtml = await buildLineupsSection(summary);
                 if (lineupsHtml) {
                     lineupsContainer.outerHTML = lineupsHtml;
                 } else {
-                    lineupsContainer.innerHTML = `<div class="ov-section-title">👥 Lineups</div><div class="ov-lineup-empty">Lineups not available for this match</div>`;
+                    lineupsContainer.innerHTML = `<div class="ov-section-title">👥 Lineups</div><div class="ov-pitch-empty">Lineups not available for this match</div>`;
                 }
             }
         } else {
             const lineupsContainer = document.getElementById('ov-lineups-container');
             if (lineupsContainer) {
-                lineupsContainer.innerHTML = `<div class="ov-section-title">👥 Lineups</div><div class="ov-lineup-empty">Lineups not available yet</div>`;
+                lineupsContainer.innerHTML = `<div class="ov-section-title">👥 Lineups</div><div class="ov-pitch-empty">Lineups not available yet</div>`;
             }
         }
     }
