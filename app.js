@@ -1,5 +1,7 @@
 document.addEventListener('DOMContentLoaded', async () => {
     let matchData = null;
+    let originalMatchData = null;
+    let predictMode = false;
     const STORAGE_KEY = 'wc2026_scores';
 
     const COUNTRY_CODES = {
@@ -206,6 +208,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             matchData = await fetchInternetData();
             await fetchLiveScores();
+            originalMatchData = JSON.parse(JSON.stringify(matchData));
         } catch (error) {
             console.error("Error loading data:", error);
             document.getElementById('groups-container').innerHTML = `<p style="color: red; font-weight: bold; background: #fff; padding: 1rem; border-radius: 8px;">Error fetching live data: ${error.message}. Please check your internet connection.</p>`;
@@ -218,6 +221,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderBracket();
         renderUpcoming();
         renderStandings();
+        applyPredictMode();
     }
 
     async function fetchLiveScores() {
@@ -356,22 +360,209 @@ document.addEventListener('DOMContentLoaded', async () => {
         return [g1, g2];
     }
 
+    function computeGroupStandings(groupName) {
+        const matches = matchData.groups[groupName] || [];
+        const teamsMap = {};
+        matches.forEach(m => {
+            if (!teamsMap[m.team1]) teamsMap[m.team1] = { name: m.team1, code: m.code1, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
+            if (!teamsMap[m.team2]) teamsMap[m.team2] = { name: m.team2, code: m.code2, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
+        });
+        matches.forEach(m => {
+            if (m.score1 !== '' && m.score2 !== '') {
+                const s1 = parseInt(m.score1) || 0;
+                const s2 = parseInt(m.score2) || 0;
+                teamsMap[m.team1].p++; teamsMap[m.team2].p++;
+                teamsMap[m.team1].gf += s1; teamsMap[m.team2].gf += s2;
+                teamsMap[m.team1].ga += s2; teamsMap[m.team2].ga += s1;
+                if (s1 > s2) { teamsMap[m.team1].w++; teamsMap[m.team1].pts += 3; teamsMap[m.team2].l++; }
+                else if (s1 < s2) { teamsMap[m.team2].w++; teamsMap[m.team2].pts += 3; teamsMap[m.team1].l++; }
+                else { teamsMap[m.team1].d++; teamsMap[m.team1].pts += 1; teamsMap[m.team2].d++; teamsMap[m.team2].pts += 1; }
+            }
+        });
+        let teamList = Object.values(teamsMap);
+        teamList.forEach(t => t.gd = t.gf - t.ga);
+        teamList.sort((a, b) => {
+            if (b.pts !== a.pts) return b.pts - a.pts;
+            if (b.gd !== a.gd) return b.gd - a.gd;
+            if (b.gf !== a.gf) return b.gf - a.gf;
+            return a.name.localeCompare(b.name);
+        });
+        return teamList;
+    }
+
+    function isGroupComplete(groupName) {
+        return (matchData.groups[groupName] || []).every(m => m.score1 !== '' && m.score2 !== '');
+    }
+
+    function resolveBracketPosition(pos) {
+        const m = pos.match(/^(\d)([A-Z](?:\/[A-Z])*)$/);
+        if (!m) return null;
+        const position = parseInt(m[1]);
+        const groups = m[2].split('/');
+        for (const group of groups) {
+            const standings = computeGroupStandings(group);
+            const team = standings[position - 1];
+            if (team) {
+                return { name: team.name, code: team.code, group, incomplete: !isGroupComplete(group) };
+            }
+        }
+        return null;
+    }
+
+    const PREDICT_CACHE_KEY = 'wc26_predict_cache';
+    const predictModifiedIds = new Set();
+
+    function persistPredictData() {
+        try {
+            if (predictModifiedIds.size === 0) return;
+            let cache = {};
+            const existing = localStorage.getItem(PREDICT_CACHE_KEY);
+            if (existing) { try { cache = JSON.parse(existing); } catch (e) { cache = {}; } }
+
+            for (const rawId of predictModifiedIds) {
+                const key = String(rawId);
+                let found = false;
+
+                for (const g in matchData.groups) {
+                    for (const m of matchData.groups[g]) {
+                        if (String(m.id) === key) {
+                            cache[key] = { score1: m.score1, score2: m.score2 };
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (found) break;
+                }
+
+                if (!found) {
+                    for (const r in matchData.knockout) {
+                        for (const m of matchData.knockout[r]) {
+                            if (String(m.id) === key) {
+                                cache[key] = { score1: m.score1, score2: m.score2, penalties: m.penalties || '' };
+                                found = true;
+                                break;
+                            }
+                        }
+                        if (found) break;
+                    }
+                }
+
+                if (!found) {
+                    console.warn('persistPredictData: match', key, 'not found in matchData');
+                }
+            }
+
+            localStorage.setItem(PREDICT_CACHE_KEY, JSON.stringify(cache));
+        } catch (e) {
+            console.error('persistPredictData error', e);
+        }
+    }
+
+    function restorePredictData() {
+        try {
+            const raw = localStorage.getItem(PREDICT_CACHE_KEY);
+            if (!raw) { console.warn('restorePredictData: no cache in localStorage'); return; }
+            const cache = JSON.parse(raw);
+            let restoreCount = 0;
+            const cacheKeys = Object.keys(cache);
+            console.log('restorePredictData: cache keys count', cacheKeys.length, 'sample', cacheKeys.slice(0, 3));
+
+            for (const g in matchData.groups) {
+                for (const m of matchData.groups[g]) {
+                    const c = cache[String(m.id)];
+                    if (c && (c.score1 !== '' || c.score2 !== '')) {
+                        m.score1 = c.score1; m.score2 = c.score2;
+                        restoreCount++;
+                    }
+                }
+            }
+            for (const r in matchData.knockout) {
+                for (const m of matchData.knockout[r]) {
+                    const c = cache[String(m.id)];
+                    if (c && (c.score1 !== '' || c.score2 !== '')) {
+                        m.score1 = c.score1; m.score2 = c.score2;
+                        if (c.penalties) m.penalties = c.penalties;
+                        restoreCount++;
+                    }
+                }
+            }
+
+            console.log('restorePredictData: restored', restoreCount, 'matches');
+        } catch (e) {
+            console.error('restorePredictData error', e);
+        }
+    }
+
+    function clearPredictCache() {
+        predictModifiedIds.clear();
+        localStorage.removeItem(PREDICT_CACHE_KEY);
+    }
+
     function saveScore(matchId, s1, s2, pens = null) {
-        // Find match in memory and update it dynamically
         for (const group in matchData.groups) {
             const m = matchData.groups[group].find(x => x.id == matchId);
-            if(m) {
+            if (m) {
                 m.score1 = s1; m.score2 = s2;
-                return renderStandings();
+                predictModifiedIds.add(matchId);
+                persistPredictData();
+                return 'group';
             }
         }
         for (const round in matchData.knockout) {
             const m = matchData.knockout[round].find(x => x.id == matchId);
-            if(m) {
+            if (m) {
                 m.score1 = s1; m.score2 = s2;
-                if(pens !== null) m.penalties = pens;
-                return;
+                if (pens !== null) m.penalties = pens;
+                predictModifiedIds.add(matchId);
+                persistPredictData();
+                return 'knockout';
             }
+        }
+        return null;
+    }
+
+    let bracketRenderTimer = null;
+    function deferBracketRender() {
+        if (bracketRenderTimer) clearTimeout(bracketRenderTimer);
+        bracketRenderTimer = setTimeout(() => { bracketRenderTimer = null; renderBracket(); }, 300);
+    }
+
+    function getKnockoutWinner(match) {
+        const s1 = parseInt(match.score1);
+        const s2 = parseInt(match.score2);
+        if (isNaN(s1) || isNaN(s2)) return null;
+
+        function resolve(team, code) {
+            const r = resolveBracketPosition(team);
+            return r ? { name: r.name, code: r.code } : { name: team, code: code };
+        }
+
+        if (s1 > s2) return resolve(match.team1, match.code1);
+        if (s2 > s1) return resolve(match.team2, match.code2);
+        if (match.penalties) {
+            const parts = match.penalties.match(/(\d+)\s*[-–]\s*(\d+)/);
+            if (parts) {
+                const p1 = parseInt(parts[1]), p2 = parseInt(parts[2]);
+                if (p1 > p2) return resolve(match.team1, match.code1);
+                if (p2 > p1) return resolve(match.team2, match.code2);
+            }
+        }
+        return null;
+    }
+
+    function applyPredictMode() {
+        const inputs = document.querySelectorAll('.score-input, .penalties-input');
+        inputs.forEach(inp => {
+            if (predictMode) {
+                inp.removeAttribute('readonly');
+            } else {
+                inp.setAttribute('readonly', '');
+            }
+        });
+        const btn = document.getElementById('predict-toggle');
+        if (btn) {
+            btn.textContent = predictMode ? '🔮 Predict Mode: ON' : '🔮 Predict Mode: OFF';
+            btn.classList.toggle('active', predictMode);
         }
     }
 
@@ -379,7 +570,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const container = document.getElementById('groups-container');
         container.innerHTML = '';
 
-        for (const [groupName, matches] of Object.entries(matchData.groups)) {
+        const sortedGroups = Object.entries(matchData.groups).sort(([a], [b]) => a.localeCompare(b));
+        for (const [groupName, matches] of sortedGroups) {
             const groupCard = document.createElement('div');
             groupCard.className = 'group-card';
             groupCard.dataset.group = groupName;
@@ -394,6 +586,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const status = getMatchStatus(match);
                 const isLive = status === 'live';
                 const winnerSide = getMatchWinnerSide(match);
+                const showResult = isLive || status === 'completed';
 
                 row.className = `match-row hover-target ${isLive ? 'live-match' : ''} ${status === 'completed' ? 'completed-match' : ''}`;
                 row.id = `match-${match.id}`;
@@ -421,13 +614,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 row.innerHTML = `
                     ${liveBadge}
                     <div class="match-teams">
-                        <div class="team ${winnerSide === '1' ? 'winner' : ''}">${getFlagHtml(match.code1)}<span class="team-name">${match.team1}</span></div>
+                        <div class="team ${showResult ? (winnerSide === '1' ? 'winner' : winnerSide === '2' ? 'loser' : 'draw') : ''}">${getFlagHtml(match.code1)}<span class="team-name">${match.team1}</span></div>
                         <div class="score-box">
                             <input type="number" class="score-input" data-id="${match.id}" data-team="1" value="${match.score1}" min="0">
                             <span>-</span>
                             <input type="number" class="score-input" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
                         </div>
-                        <div class="team right ${winnerSide === '2' ? 'winner' : ''}"><span class="team-name">${match.team2}</span>${getFlagHtml(match.code2)}</div>
+                        <div class="team right ${showResult ? (winnerSide === '2' ? 'winner' : winnerSide === '1' ? 'loser' : 'draw') : ''}"><span class="team-name">${match.team2}</span>${getFlagHtml(match.code2)}</div>
                     </div>
                     ${watchBtn}
                     <div class="match-time-label">${formatTime(match.time)}</div>
@@ -444,11 +637,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function createKnockoutMatchHtml(match, isFinal = false) {
-        if(!match) return ''; // Safety check if data is incomplete
+    function createKnockoutMatchHtml(match, isFinal = false, predict = null) {
+        if (!match) return '';
         const status = getMatchStatus(match);
         const isLive = status === 'live';
         const winnerSide = getMatchWinnerSide(match);
+        const showResult = isLive || status === 'completed';
         const liveText = match._liveDetail || 'LIVE';
         const liveBadge = isLive ? `<div class="live-badge" style="top: -15px; right: -5px;">${liveText} <span class="pulsing-dot"></span></div>` : '';
         let pensInput = isFinal || match.id > 72 ? `<input type="text" class="penalties-input" data-id="${match.id}" placeholder="" value="${match.penalties || ''}">` : '';
@@ -470,11 +664,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         const showInfoBtn = isMatchFinished(match) || isLive;
         const infoBtn = showInfoBtn ? `<button class="match-info-btn ko-info-btn" data-match-id="${match.id}" title="Match details">ℹ</button>` : '';
 
+        const showPredict = !!predict;
+
+        const t1Name = showPredict ? (predict.t1 || match.team1) : match.team1;
+        const t2Name = showPredict ? (predict.t2 || match.team2) : match.team2;
+        const t1Code = showPredict ? (predict.c1 || match.code1) : match.code1;
+        const t2Code = showPredict ? (predict.c2 || match.code2) : match.code2;
+        const t1Incomplete = showPredict && predict.i1;
+        const t2Incomplete = showPredict && predict.i2;
+        const incompleteMsg = match.round === 'Round of 32' ? 'Based on live group standing!' : 'Waiting for previous round';
+        const t1Tt = t1Incomplete ? incompleteMsg : t1Name;
+        const t2Tt = t2Incomplete ? incompleteMsg : t2Name;
+        const warnIcon = `<span class="predict-warn" title="${incompleteMsg}">!</span>`;
+
         return `
             <div id="match-${match.id}" class="knockout-match hover-target ${isFinal ? 'final-match' : ''} ${isLive ? 'live-match' : ''} ${status === 'completed' ? 'completed-match' : ''}"
                  data-match-id="${match.id}"
-                 data-team1="${match.team1}"
-                 data-team2="${match.team2}"
+                 data-team1="${t1Name}"
+                 data-team2="${t2Name}"
                  data-stadium="${match.stadium}"
                  data-city="${getCityFromStadium(match.stadium)}"
                  data-group=""
@@ -484,12 +691,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                 ${liveBadge}
                 ${isFinal ? '<div class="final-label">Final</div>' : ''}
                 <div class="match-time-label ko-time">${formatTime(match.time)}</div>
-                <div class="ko-team-row ${winnerSide === '1' ? 'winner' : ''}">
-                    <span class="ko-team" title="${match.team1}">${getFlagHtml(match.code1)}${match.team1}</span>
+                <div class="ko-team-row ${showResult ? (winnerSide === '1' ? 'winner' : winnerSide === '2' ? 'loser' : 'draw') : ''}">
+                    <span class="ko-team" title="${t1Tt}">${getFlagHtml(t1Code)}${t1Name}${t1Incomplete ? warnIcon : ''}</span>
                     <input type="number" class="score-input ko-score" data-id="${match.id}" data-team="1" value="${match.score1}" min="0">
                 </div>
-                <div class="ko-team-row ${winnerSide === '2' ? 'winner' : ''}">
-                    <span class="ko-team" title="${match.team2}">${getFlagHtml(match.code2)}${match.team2}</span>
+                <div class="ko-team-row ${showResult ? (winnerSide === '2' ? 'winner' : winnerSide === '1' ? 'loser' : 'draw') : ''}">
+                    <span class="ko-team" title="${t2Tt}">${getFlagHtml(t2Code)}${t2Name}${t2Incomplete ? warnIcon : ''}</span>
                     <input type="number" class="score-input ko-score" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
                 </div>
                 ${pensInput}
@@ -507,28 +714,74 @@ document.addEventListener('DOMContentLoaded', async () => {
         const container = document.getElementById('bracket-container');
         container.innerHTML = '';
 
-        const stages = {
-            r32: matchData.knockout["Round of 32"] || [],
-            r16: matchData.knockout["Round of 16"] || [],
-            qf: matchData.knockout["Quarter-finals"] || [],
-            sf: matchData.knockout["Semi-finals"] || [],
-            final: matchData.knockout["Final"] ? matchData.knockout["Final"][0] : null
-        };
+        const r32 = matchData.knockout["Round of 32"] || [];
+        const r16 = matchData.knockout["Round of 16"] || [];
+        const qf = matchData.knockout["Quarter-finals"] || [];
+        const sf = matchData.knockout["Semi-finals"] || [];
+        const finalMatch = matchData.knockout["Final"] ? matchData.knockout["Final"][0] : null;
+
+        const roundNames = [
+            { original: "Round of 32", storage: "Round of 32" },
+            { original: "Round of 16", storage: "Round of 16" },
+            { original: "Quarter-final", storage: "Quarter-finals" },
+            { original: "Semi-final", storage: "Semi-finals" },
+            { original: "Final", storage: "Final" }
+        ];
+
+        function getResolvedBracketInfo(match) {
+            const rIdx = roundNames.findIndex(r => r.original === match.round);
+            if (rIdx === -1) return null;
+
+            if (rIdx === 0) {
+                const t1 = resolveBracketPosition(match.team1);
+                const t2 = resolveBracketPosition(match.team2);
+                return {
+                    t1: t1 ? t1.name : match.team1,
+                    t2: t2 ? t2.name : match.team2,
+                    c1: t1 ? t1.code : match.code1,
+                    c2: t2 ? t2.code : match.code2,
+                    i1: t1 ? t1.incomplete : false,
+                    i2: t2 ? t2.incomplete : false
+                };
+            }
+
+            const prevStorage = roundNames[rIdx - 1].storage;
+            const curStorage = roundNames[rIdx].storage;
+            const prevMatches = matchData.knockout[prevStorage] || [];
+            const matches = matchData.knockout[curStorage] || [];
+            const matchIdx = matches.findIndex(m => m.id === match.id);
+            if (matchIdx === -1) return null;
+
+            const prevIdx1 = matchIdx * 2;
+            const prevIdx2 = matchIdx * 2 + 1;
+
+            const w1 = prevMatches[prevIdx1] ? getKnockoutWinner(prevMatches[prevIdx1]) : null;
+            const w2 = prevMatches[prevIdx2] ? getKnockoutWinner(prevMatches[prevIdx2]) : null;
+
+            return {
+                t1: w1 ? w1.name : match.team1,
+                t2: w2 ? w2.name : match.team2,
+                c1: w1 ? w1.code : match.code1,
+                c2: w2 ? w2.code : match.code2,
+                i1: !w1,
+                i2: !w2
+            };
+        }
 
         const renderCol = (matches, align) => {
             const col = document.createElement('div');
             col.className = 'bracket-column ' + align;
-            
-            for(let i=0; i<matches.length; i+=2) {
-                if (i+1 < matches.length) {
+            for (let i = 0; i < matches.length; i += 2) {
+                if (i + 1 < matches.length) {
                     const pair = document.createElement('div');
                     pair.className = 'match-pair';
-                    pair.innerHTML = createKnockoutMatchHtml(matches[i]) + createKnockoutMatchHtml(matches[i+1]);
+                    pair.innerHTML = createKnockoutMatchHtml(matches[i], false, getResolvedBracketInfo(matches[i]))
+                        + createKnockoutMatchHtml(matches[i + 1], false, getResolvedBracketInfo(matches[i + 1]));
                     col.appendChild(pair);
                 } else {
                     const single = document.createElement('div');
                     single.className = 'match-single';
-                    single.innerHTML = createKnockoutMatchHtml(matches[i]);
+                    single.innerHTML = createKnockoutMatchHtml(matches[i], false, getResolvedBracketInfo(matches[i]));
                     col.appendChild(single);
                 }
             }
@@ -536,22 +789,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
 
         // Left Bracket
-        container.appendChild(renderCol(stages.r32.slice(0, 8), 'left-col'));
-        container.appendChild(renderCol(stages.r16.slice(0, 4), 'left-col'));
-        container.appendChild(renderCol(stages.qf.slice(0, 2), 'left-col'));
-        container.appendChild(renderCol([stages.sf[0]], 'left-col'));
+        container.appendChild(renderCol(r32.slice(0, 8), 'left-col'));
+        container.appendChild(renderCol(r16.slice(0, 4), 'left-col'));
+        container.appendChild(renderCol(qf.slice(0, 2), 'left-col'));
+        container.appendChild(renderCol([sf[0]], 'left-col'));
 
         // Center Final
         const centerCol = document.createElement('div');
         centerCol.className = 'bracket-column col-center';
-        if(stages.final) centerCol.innerHTML = createKnockoutMatchHtml(stages.final, true);
+        if (finalMatch) centerCol.innerHTML = createKnockoutMatchHtml(finalMatch, true, getResolvedBracketInfo(finalMatch));
         container.appendChild(centerCol);
 
         // Right Bracket
-        container.appendChild(renderCol([stages.sf[1]], 'right-col'));
-        container.appendChild(renderCol(stages.qf.slice(2, 4), 'right-col'));
-        container.appendChild(renderCol(stages.r16.slice(4, 8), 'right-col'));
-        container.appendChild(renderCol(stages.r32.slice(8, 16), 'right-col'));
+        container.appendChild(renderCol([sf[1]], 'right-col'));
+        container.appendChild(renderCol(qf.slice(2, 4), 'right-col'));
+        container.appendChild(renderCol(r16.slice(4, 8), 'right-col'));
+        container.appendChild(renderCol(r32.slice(8, 16), 'right-col'));
     }
 
     function renderUpcoming() {
@@ -640,53 +893,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function renderStandings() {
         const container = document.getElementById('standings-container');
+        if (!container) return;
         container.innerHTML = '';
 
-        for (const [groupName, matches] of Object.entries(matchData.groups)) {
-            const teamsMap = {};
-            
-            matches.forEach(m => {
-                if(!teamsMap[m.team1]) teamsMap[m.team1] = { name: m.team1, code: m.code1, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
-                if(!teamsMap[m.team2]) teamsMap[m.team2] = { name: m.team2, code: m.code2, p: 0, w: 0, d: 0, l: 0, gf: 0, ga: 0, gd: 0, pts: 0 };
-            });
-
-            matches.forEach(m => {
-                if (m.score1 !== "" && m.score2 !== "") {
-                    const s1 = parseInt(m.score1) || 0;
-                    const s2 = parseInt(m.score2) || 0;
-                    
-                    teamsMap[m.team1].p++;
-                    teamsMap[m.team2].p++;
-                    teamsMap[m.team1].gf += s1;
-                    teamsMap[m.team2].gf += s2;
-                    teamsMap[m.team1].ga += s2;
-                    teamsMap[m.team2].ga += s1;
-                    
-                    if (s1 > s2) {
-                        teamsMap[m.team1].w++;
-                        teamsMap[m.team1].pts += 3;
-                        teamsMap[m.team2].l++;
-                    } else if (s1 < s2) {
-                        teamsMap[m.team2].w++;
-                        teamsMap[m.team2].pts += 3;
-                        teamsMap[m.team1].l++;
-                    } else {
-                        teamsMap[m.team1].d++;
-                        teamsMap[m.team1].pts += 1;
-                        teamsMap[m.team2].d++;
-                        teamsMap[m.team2].pts += 1;
-                    }
-                }
-            });
-
-            let teamList = Object.values(teamsMap);
-            teamList.forEach(t => t.gd = t.gf - t.ga);
-
-            teamList.sort((a, b) => {
-                if(b.pts !== a.pts) return b.pts - a.pts;
-                if(b.gd !== a.gd) return b.gd - a.gd;
-                return b.gf - a.gf;
-            });
+        const sortedGroups = Object.entries(matchData.groups).sort(([a], [b]) => a.localeCompare(b));
+        for (const [groupName] of sortedGroups) {
+            const teamList = computeGroupStandings(groupName);
 
             const groupCard = document.createElement('div');
             groupCard.className = 'group-card';
@@ -702,9 +914,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 </thead>
                 <tbody>`;
             
-            teamList.forEach(t => {
+            teamList.forEach((t, i) => {
+                const rankClass = i === 0 ? 'standing-top' : i === 1 ? 'standing-second' : '';
                 html += `
-                    <tr>
+                    <tr class="${rankClass}">
                         <td class="team-cell">${getFlagHtml(t.code)} ${t.name}</td>
                         <td>${t.p}</td>
                         <td>${t.w}</td>
@@ -725,29 +938,45 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     document.body.addEventListener('input', e => {
-        if (e.target.classList.contains('score-input')) {
-            const matchId = e.target.dataset.id;
-            const parent = e.target.closest('.match-row') || e.target.closest('.knockout-match');
-            const inputs = parent.querySelectorAll('.score-input');
-            const pensInput = parent.querySelector('.penalties-input');
-            
-            const s1 = inputs[0].value;
-            const s2 = inputs[1].value;
-            const pens = pensInput ? pensInput.value : null;
+        try {
+            if (e.target.classList.contains('score-input') && !predictMode) return;
+            if (e.target.classList.contains('score-input')) {
+                const matchId = e.target.dataset.id;
+                const parent = e.target.closest('.match-row') || e.target.closest('.knockout-match');
+                const inputs = parent.querySelectorAll('.score-input');
+                const pensInput = parent.querySelector('.penalties-input');
+                
+                const s1 = inputs[0].value;
+                const s2 = inputs[1].value;
+                const pens = pensInput ? pensInput.value : null;
 
-            saveScore(matchId, s1, s2, pens);
-        }
+                const type = saveScore(matchId, s1, s2, pens);
+                if (type === 'group') {
+                    renderStandings();
+                    deferBracketRender();
+                } else if (type === 'knockout') {
+                    deferBracketRender();
+                }
+                e.target.style.borderColor = '#00ff88';
+                setTimeout(() => { e.target.style.borderColor = ''; }, 300);
+                return;
+            }
 
-        if (e.target.classList.contains('penalties-input')) {
-            const matchId = e.target.dataset.id;
-            const parent = e.target.closest('.knockout-match');
-            const inputs = parent.querySelectorAll('.score-input');
-            
-            const s1 = inputs[0].value;
-            const s2 = inputs[1].value;
-            const pens = e.target.value;
+            if (e.target.classList.contains('penalties-input') && !predictMode) return;
+            if (e.target.classList.contains('penalties-input')) {
+                const matchId = e.target.dataset.id;
+                const parent = e.target.closest('.knockout-match');
+                const inputs = parent.querySelectorAll('.score-input');
+                
+                const s1 = inputs[0].value;
+                const s2 = inputs[1].value;
+                const pens = e.target.value;
 
-            saveScore(matchId, s1, s2, pens);
+                const type = saveScore(matchId, s1, s2, pens);
+                if (type === 'knockout') deferBracketRender();
+            }
+        } catch (err) {
+            console.error('input handler error:', err);
         }
     });
 
@@ -1882,8 +2111,39 @@ document.addEventListener('DOMContentLoaded', async () => {
     setupOverlay();
     applyFilters();
 
+    // Predict mode toggle
+    const predictBtn = document.getElementById('predict-toggle');
+    if (predictBtn) {
+        predictBtn.addEventListener('click', () => {
+            predictMode = !predictMode;
+            if (originalMatchData) {
+                if (predictMode) {
+                    matchData = JSON.parse(JSON.stringify(originalMatchData));
+                    console.log('toggle: about to restorePredictData, group count', Object.keys(matchData.groups).length);
+                    restorePredictData();
+                } else {
+                    matchData = JSON.parse(JSON.stringify(originalMatchData));
+                }
+            }
+            renderAll();
+        });
+    }
+
+    const clearLink = document.getElementById('predict-clear');
+    if (clearLink) {
+        clearLink.addEventListener('click', async () => {
+            clearPredictCache();
+            await loadData();
+            renderAll();
+            populateFilterOptions();
+            rebindHoverExpand();
+            applyFilters();
+        });
+    }
+
     // Auto-refresh live scores every 30 seconds
     setInterval(async () => {
+        if (predictMode) return; // skip while user is predicting
         try {
             await loadData();
             renderAll();
