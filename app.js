@@ -27,7 +27,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         'Congo DR': 'DR Congo',
         'Cabo Verde': 'Cape Verde',
         'Czechia': 'Czech Republic',
-        'Turkiye': 'Turkey'
+        'Turkiye': 'Turkey',
+        'Türkiye': 'Turkey'
     };
 
     function getCountryCode(teamName) {
@@ -2141,11 +2142,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    function prefetchMatchLineups() {
+        const candidates = [];
+        for (const g in matchData.groups) {
+            for (const m of matchData.groups[g]) {
+                if (m._espnEventId && (m._espnStatusState === 'in' || m._espnStatusState === 'post')) {
+                    candidates.push(m);
+                }
+            }
+        }
+        for (const r in matchData.knockout) {
+            for (const m of matchData.knockout[r]) {
+                if (m._espnEventId && (m._espnStatusState === 'in' || m._espnStatusState === 'post')) {
+                    candidates.push(m);
+                }
+            }
+        }
+        for (const m of candidates) {
+            const eid = m._espnEventId;
+            if (m._espnStatusState === 'in' || !summaryCache.has(eid)) {
+                fetchMatchSummary(eid).catch(() => {});
+            }
+        }
+    }
+
     // Auto-refresh live scores every 30 seconds
     setInterval(async () => {
         if (predictMode) return; // skip while user is predicting
         try {
             await loadData();
+            prefetchMatchLineups();
             renderAll();
             populateFilterOptions();
             rebindHoverExpand();
