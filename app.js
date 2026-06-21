@@ -4,6 +4,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     let predictMode = false;
     const STORAGE_KEY = 'wc2026_scores';
 
+    // Cloud-prediction state (declared early: renderAll runs at init, before
+    // the cloud section below, and refreshPredictionViews reads these).
+    const sb = window.sb || null;
+    let cloudUser = null;        // { id, nickname }
+    let othersPredictions = [];  // [{ user_id, nickname, match_num, score1, score2, pens1, pens2 }]
+
     const COUNTRY_CODES = {
         'South Korea': 'kr', 'Curaçao': 'cw', 'Haiti': 'ht', 'Uruguay': 'uy', 'Spain': 'es', 
         'Ecuador': 'ec', 'Ghana': 'gh', 'Mexico': 'mx', 'USA': 'us', 'Germany': 'de', 
@@ -129,6 +135,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         return getMatchStatus(match) === 'completed';
     }
 
+    // Stable, deterministic id for matches the source ships without a `num`
+    // (group stage — 72 of 104). Derived from date + teams so it stays the
+    // same across reloads and users, which published predictions rely on.
+    // Offset above the 1..104 num space; stays within int4 range.
+    function stableMatchId(match) {
+        const key = (match.date || '') + '|' + (match.team1 || '') + '|' + (match.team2 || '') + '|' + (match.round || '');
+        let h = 5381;
+        for (let i = 0; i < key.length; i++) h = ((h << 5) + h + key.charCodeAt(i)) | 0;
+        return 1000000 + (Math.abs(h) % 2000000000);
+    }
+
     async function fetchInternetData() {
         const url = 'https://raw.githubusercontent.com/openfootball/worldcup.json/master/2026/worldcup.json?t=' + new Date().getTime();
         const response = await fetch(url);
@@ -166,7 +183,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             let matchObj = {
-                id: match.num || Math.floor(Math.random()*10000),
+                id: match.num || stableMatchId(match),
                 team1: match.team1,
                 team2: match.team2,
                 score1: s1,
@@ -223,6 +240,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderUpcoming();
         renderStandings();
         applyPredictMode();
+        if (typeof refreshPredictionViews === 'function') refreshPredictionViews();
     }
 
     async function fetchLiveScores() {
@@ -2142,6 +2160,306 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    // =============================
+    // CLOUD PREDICTIONS (Supabase)
+    // =============================
+    // (sb / cloudUser / othersPredictions declared near top — TDZ otherwise.)
+
+    function escapeHtml(str) {
+        const d = document.createElement('div');
+        d.textContent = String(str == null ? '' : str);
+        return d.innerHTML;
+    }
+
+    function eachMatch(data, fn) {
+        if (!data) return;
+        for (const g in data.groups) for (const m of data.groups[g]) fn(m);
+        for (const r in data.knockout) for (const m of data.knockout[r]) fn(m);
+    }
+
+    function findOriginalMatch(num) {
+        let res = null;
+        eachMatch(originalMatchData, m => { if (String(m.id) === String(num)) res = m; });
+        return res;
+    }
+
+    async function ensureAuth() {
+        let { data: { session } } = await sb.auth.getSession();
+        if (!session) {
+            const { data, error } = await sb.auth.signInAnonymously();
+            if (error) throw error;
+            session = data.session;
+        }
+        return session.user;
+    }
+
+    async function loadProfile(uid) {
+        const { data } = await sb.from('profiles').select('id, nickname').eq('id', uid).maybeSingle();
+        if (data) cloudUser = { id: data.id, nickname: data.nickname };
+    }
+
+    function updateIdentityUI() {
+        const idEl = document.getElementById('predict-identity');
+        const pubBtn = document.getElementById('predict-publish');
+        if (idEl) {
+            if (cloudUser) {
+                idEl.textContent = '👤 ' + cloudUser.nickname;
+                idEl.classList.remove('hidden');
+            } else {
+                idEl.classList.add('hidden');
+            }
+        }
+        if (pubBtn) pubBtn.textContent = cloudUser ? '📢 Publish' : '📢 Publish';
+    }
+
+    // Tiered scoring: exact=5, correct goal diff=3, correct outcome=1, wrong=0.
+    function scoreOne(pred, actual) {
+        if (!actual || !isMatchFinished(actual)) return null;
+        const a1 = parseInt(actual.score1), a2 = parseInt(actual.score2);
+        if (Number.isNaN(a1) || Number.isNaN(a2)) return null;
+        const p1 = pred.score1, p2 = pred.score2;
+        if (p1 === a1 && p2 === a2) return 5;
+        if ((p1 - p2) === (a1 - a2)) return 3;
+        if (Math.sign(p1 - p2) === Math.sign(a1 - a2)) return 1;
+        return 0;
+    }
+
+    function localPredictionRows(userId) {
+        const raw = localStorage.getItem(PREDICT_CACHE_KEY);
+        if (!raw) return { rows: [], skipped: 0 };
+        let cache = {};
+        try { cache = JSON.parse(raw); } catch (e) { return { rows: [], skipped: 0 }; }
+        const rows = [];
+        let skipped = 0;
+        for (const key in cache) {
+            const c = cache[key];
+            const s1 = parseInt(c.score1), s2 = parseInt(c.score2);
+            if (Number.isNaN(s1) || Number.isNaN(s2)) continue;
+            // Lock: don't publish predictions for matches that already kicked off.
+            const actual = findOriginalMatch(key);
+            if (actual && actual.time && new Date(actual.time).getTime() <= Date.now()) { skipped++; continue; }
+            let pens1 = null, pens2 = null;
+            if (c.penalties) {
+                const pm = String(c.penalties).match(/(\d+)\s*[-–]\s*(\d+)/);
+                if (pm) { pens1 = parseInt(pm[1]); pens2 = parseInt(pm[2]); }
+            }
+            rows.push({ user_id: userId, match_num: parseInt(key), score1: s1, score2: s2, pens1, pens2, published: true, updated_at: new Date().toISOString() });
+        }
+        return { rows, skipped };
+    }
+
+    async function fetchOthersPredictions() {
+        if (!sb) return;
+        const { data, error } = await sb.from('predictions')
+            .select('user_id, match_num, score1, score2, pens1, pens2, profiles(nickname)')
+            .eq('published', true);
+        if (error) { console.warn('fetchOthersPredictions:', error.message); return; }
+        othersPredictions = (data || []).map(r => ({
+            user_id: r.user_id, match_num: r.match_num,
+            score1: r.score1, score2: r.score2, pens1: r.pens1, pens2: r.pens2,
+            nickname: (r.profiles && r.profiles.nickname) || '???'
+        }));
+    }
+
+    function renderLeaderboard() {
+        const el = document.getElementById('leaderboard-container');
+        if (!el) return;
+        const agg = {};
+        for (const p of othersPredictions) {
+            const actual = findOriginalMatch(p.match_num);
+            const s = scoreOne(p, actual);
+            if (s === null) continue;
+            const a = agg[p.user_id] || (agg[p.user_id] = { nick: p.nickname, pts: 0, hits: 0, total: 0 });
+            a.pts += s; a.total++; if (s > 0) a.hits++;
+        }
+        const rows = Object.values(agg).sort((x, y) => y.pts - x.pts || y.hits - x.hits);
+        if (!rows.length) {
+            el.innerHTML = '<p class="lb-empty">No scored predictions yet. Publish predictions and check back once matches finish.</p>';
+            return;
+        }
+        el.innerHTML =
+            '<p class="lb-legend">Exact score <b>+5</b> &middot; Correct goal difference <b>+3</b> &middot; Correct result <b>+1</b></p>' +
+            '<table class="lb-table"><thead><tr><th>#</th><th>Player</th><th>Points</th><th>Hits</th><th>Success</th></tr></thead><tbody>' +
+            rows.map((r, i) => {
+                const rate = r.total ? Math.round(r.hits / r.total * 100) : 0;
+                const me = (cloudUser && r.nick === cloudUser.nickname) ? ' class="lb-me"' : '';
+                return `<tr${me}><td>${i + 1}</td><td>${escapeHtml(r.nick)}</td><td>${r.pts}</td><td>${r.hits}/${r.total}</td><td>${rate}%</td></tr>`;
+            }).join('') +
+            '</tbody></table>';
+    }
+
+    function flashPublish(msg) {
+        const btn = document.getElementById('predict-publish');
+        if (!btn) return;
+        const orig = btn.textContent;
+        btn.textContent = msg;
+        btn.classList.add('published-flash');
+        setTimeout(() => { btn.textContent = orig; btn.classList.remove('published-flash'); }, 2200);
+    }
+
+    async function doPublish() {
+        if (!sb) { alert('Cloud predictions not configured.'); return; }
+        if (!cloudUser) { openNicknameModal(); return; }
+        const { rows, skipped } = localPredictionRows(cloudUser.id);
+        if (!rows.length) {
+            alert(skipped
+                ? 'All your predicted matches have already kicked off — nothing left to publish.'
+                : 'No predicted scores yet. Turn on Predict Mode and enter some scores first.');
+            return;
+        }
+        const { error } = await sb.from('predictions').upsert(rows, { onConflict: 'user_id,match_num' });
+        if (error) { alert('Publish failed: ' + error.message); return; }
+        flashPublish('✅ Published ' + rows.length + (skipped ? ' (' + skipped + ' locked)' : ''));
+        await fetchOthersPredictions();
+        renderLeaderboard();
+        refreshPredictionViews();
+    }
+
+    // ---- Nickname modal ----
+    function openNicknameModal() {
+        const modal = document.getElementById('nickname-modal');
+        const input = document.getElementById('nickname-input');
+        const err = document.getElementById('nickname-error');
+        if (!modal) return;
+        if (err) { err.classList.add('hidden'); err.textContent = ''; }
+        if (input) input.value = cloudUser ? cloudUser.nickname : '';
+        modal.classList.remove('hidden');
+        if (input) input.focus();
+    }
+    function closeNicknameModal() {
+        const modal = document.getElementById('nickname-modal');
+        if (modal) modal.classList.add('hidden');
+    }
+
+    async function saveNicknameAndPublish() {
+        const input = document.getElementById('nickname-input');
+        const err = document.getElementById('nickname-error');
+        const nick = (input.value || '').trim();
+        function showErr(m) { if (err) { err.textContent = m; err.classList.remove('hidden'); } }
+        if (nick.length < 2) { showErr('Nickname must be at least 2 characters.'); return; }
+        if (nick.length > 24) { showErr('Nickname too long (max 24).'); return; }
+        try {
+            const user = await ensureAuth();
+            const { error } = await sb.from('profiles').upsert({ id: user.id, nickname: nick });
+            if (error) {
+                showErr(error.code === '23505' ? 'That nickname is taken — pick another.' : error.message);
+                return;
+            }
+            cloudUser = { id: user.id, nickname: nick };
+            closeNicknameModal();
+            updateIdentityUI();
+            await doPublish();
+        } catch (e) {
+            showErr(e.message || 'Could not save nickname.');
+        }
+    }
+
+    // ---- Per-match prediction reveal (inside the hover-expanded card) ----
+    function cardMatchId(card) {
+        const inp = card.querySelector('.score-input[data-id]');
+        return inp ? inp.dataset.id : null;
+    }
+
+    // Inject a "see predictions" button into each card's hover-expanded
+    // details. The full breakdown opens in a modal when the button is clicked.
+    function refreshPredictionViews() {
+        const counts = {};
+        for (const p of othersPredictions) counts[p.match_num] = (counts[p.match_num] || 0) + 1;
+        document.querySelectorAll('.match-row, .knockout-match').forEach(card => {
+            const det = card.querySelector('.match-details');
+            if (!det) return;
+            const old = det.querySelector('.preds-open-btn');
+            if (old) old.remove();
+            const id = cardMatchId(card);
+            if (!id) return;
+            const c = counts[id];
+            if (!c) return;
+            const btn = document.createElement('button');
+            btn.className = 'preds-open-btn';
+            btn.dataset.predsMatch = id;
+            btn.textContent = '👥 ' + c + ' prediction' + (c > 1 ? 's' : '');
+            det.appendChild(btn);
+        });
+    }
+
+    function openPredsModal(num) {
+        const modal = document.getElementById('preds-modal');
+        const title = document.getElementById('preds-title');
+        const body = document.getElementById('preds-body');
+        if (!modal) return;
+        const list = othersPredictions.filter(p => String(p.match_num) === String(num));
+        const actual = findOriginalMatch(num);
+        const finished = !!(actual && isMatchFinished(actual));
+        title.textContent = actual ? ((actual.team1 || '?') + ' vs ' + (actual.team2 || '?')) : 'Predictions';
+
+        const total = list.length;
+        const dist = {};
+        for (const p of list) { const k = p.score1 + '–' + p.score2; dist[k] = (dist[k] || 0) + 1; }
+        const distRows = Object.entries(dist).sort((a, b) => b[1] - a[1]);
+
+        let html = '';
+        if (finished) {
+            html += `<p class="preds-actual">Final: <b>${actual.score1}–${actual.score2}</b>${actual.penalties ? ' (' + escapeHtml(actual.penalties) + ')' : ''}</p>`;
+        }
+        html += '<div class="preds-dist">' + distRows.map(([k, n]) => {
+            const pct = total ? Math.round(n / total * 100) : 0;
+            return `<div class="preds-bar-row"><span class="preds-score">${escapeHtml(k)}</span><span class="preds-bar"><span class="preds-bar-fill" style="width:${pct}%"></span></span><span class="preds-count">${n}</span></div>`;
+        }).join('') + '</div>';
+
+        const sorted = list.slice().sort((a, b) => (scoreOne(b, actual) || 0) - (scoreOne(a, actual) || 0));
+        html += '<table class="preds-table"><thead><tr><th>Player</th><th>Pick</th>' + (finished ? '<th>Pts</th>' : '') + '</tr></thead><tbody>';
+        html += sorted.map(p => {
+            const pts = finished ? scoreOne(p, actual) : null;
+            const pens = (p.pens1 != null && p.pens2 != null) ? ` <span class="preds-pens">(${p.pens1}–${p.pens2} pens)</span>` : '';
+            const ptsCell = finished ? `<td>${pts > 0 ? '+' + pts : pts}</td>` : '';
+            return `<tr><td>${escapeHtml(p.nickname)}</td><td>${p.score1}–${p.score2}${pens}</td>${ptsCell}</tr>`;
+        }).join('') + '</tbody></table>';
+
+        body.innerHTML = html;
+        modal.classList.remove('hidden');
+    }
+
+    document.body.addEventListener('click', e => {
+        const b = e.target.closest('.preds-open-btn');
+        if (b) openPredsModal(b.dataset.predsMatch);
+    });
+
+    async function cloudInit() {
+        if (!sb) { console.warn('Supabase client not found — cloud predictions disabled.'); return; }
+        try {
+            const { data: { session } } = await sb.auth.getSession();
+            if (session) await loadProfile(session.user.id);
+            updateIdentityUI();
+            await fetchOthersPredictions();
+            renderLeaderboard();
+            refreshPredictionViews();
+        } catch (e) { console.warn('cloudInit:', e.message); }
+    }
+
+    const publishBtn = document.getElementById('predict-publish');
+    if (publishBtn) publishBtn.addEventListener('click', doPublish);
+
+    const nickSave = document.getElementById('nickname-save');
+    if (nickSave) nickSave.addEventListener('click', saveNicknameAndPublish);
+    const nickCancel = document.getElementById('nickname-cancel');
+    if (nickCancel) nickCancel.addEventListener('click', closeNicknameModal);
+    const nickModal = document.getElementById('nickname-modal');
+    if (nickModal) {
+        const bd = nickModal.querySelector('.modal-backdrop');
+        if (bd) bd.addEventListener('click', closeNicknameModal);
+        const ni = document.getElementById('nickname-input');
+        if (ni) ni.addEventListener('keydown', e => { if (e.key === 'Enter') saveNicknameAndPublish(); });
+    }
+    const predsModal = document.getElementById('preds-modal');
+    if (predsModal) {
+        const bd = predsModal.querySelector('.modal-backdrop');
+        const cl = predsModal.querySelector('.overlay-close');
+        if (bd) bd.addEventListener('click', () => predsModal.classList.add('hidden'));
+        if (cl) cl.addEventListener('click', () => predsModal.classList.add('hidden'));
+    }
+
+    cloudInit();
+
     function prefetchMatchLineups() {
         const candidates = [];
         for (const g in matchData.groups) {
@@ -2171,11 +2489,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (predictMode) return; // skip while user is predicting
         try {
             await loadData();
+            await fetchOthersPredictions();
             prefetchMatchLineups();
             renderAll();
             populateFilterOptions();
             rebindHoverExpand();
             applyFilters();
+            renderLeaderboard();
         } catch (e) {
             console.warn('Auto-refresh failed:', e.message);
         }

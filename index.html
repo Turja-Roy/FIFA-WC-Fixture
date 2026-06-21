@@ -19,7 +19,9 @@
 
     <div id="predict-bar">
         <button id="predict-toggle" class="btn-outline" type="button">🔮 Predict Mode: OFF</button>
+        <button id="predict-publish" class="btn-outline" type="button" title="Publish your predictions so others can see them">📢 Publish</button>
         <span id="predict-clear" class="predict-clear-link" title="Clear cached predict scores">Clear</span>
+        <span id="predict-identity" class="predict-identity hidden"></span>
     </div>
 
     <div id="filter-bar">
@@ -103,6 +105,13 @@
                 <!-- Standings will be injected here -->
             </div>
         </section>
+
+        <section id="leaderboard-section">
+            <h2>Prediction Leaderboard</h2>
+            <div id="leaderboard-container" class="leaderboard">
+                <!-- Leaderboard injected here -->
+            </div>
+        </section>
     </main>
 
     <footer>
@@ -121,6 +130,38 @@
         </div>
     </div>
 
+    <!-- Nickname Modal -->
+    <div id="nickname-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-card">
+            <h3>Pick a nickname</h3>
+            <p class="modal-sub">Shown on the public leaderboard with your predictions.</p>
+            <input type="text" id="nickname-input" maxlength="24" placeholder="e.g. GoalMachine" autocomplete="off">
+            <div id="nickname-error" class="modal-error hidden"></div>
+            <div class="modal-actions">
+                <button id="nickname-cancel" class="btn-outline" type="button">Cancel</button>
+                <button id="nickname-save" class="btn-solid" type="button">Save &amp; Publish</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Match Predictions Reveal -->
+    <div id="preds-modal" class="modal hidden">
+        <div class="modal-backdrop"></div>
+        <div class="modal-card">
+            <button class="overlay-close" type="button" aria-label="Close">&times;</button>
+            <h3 id="preds-title">Predictions</h3>
+            <div id="preds-body"></div>
+        </div>
+    </div>
+
+    <!-- Supabase config + client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        window.SUPABASE_URL = 'https://gnovifnpdghbwdkyhxvs.supabase.co';
+        window.SUPABASE_KEY = 'sb_publishable_MDjUjUCbiPkrB0_o4Dde-g_ybmIeYTr';
+        window.sb = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_KEY);
+    </script>
     <script src="app.js"></script>
 </body>
 </html>
