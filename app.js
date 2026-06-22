@@ -1992,9 +1992,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function buildPitchRowsFromArranged(rows, side, eventsIdx) {
         let result = rows.map(row => {
-            // Away team is mirrored vertically (rows reversed) and
-            // horizontally (columns reversed) so both teams read naturally.
-            const cols = side === 'away' ? row.slice().reverse() : row;
+            const cols = side === 'home' ? row.slice().reverse() : row;
             return '<div class="ov-pitch-row">' + cols.map(p => buildPitchPlayerHtml(p, side, eventsIdx)).join('') + '</div>';
         });
         if (side === 'away') result = result.reverse();
