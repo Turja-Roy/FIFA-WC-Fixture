@@ -1596,7 +1596,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     async function fetchEspnForMatch(match) {
-        const dateStr = match.time ? match.time.substring(0, 10).replace(/-/g, '') : null;
+        let dateStr = null;
+        if (match.time) {
+            const d = new Date(match.time);
+            dateStr = d.getUTCFullYear() + String(d.getUTCMonth() + 1).padStart(2, '0') + String(d.getUTCDate()).padStart(2, '0');
+        }
         if (!dateStr) return false;
         const cacheKey = 'espn_date_' + dateStr;
         let data;
