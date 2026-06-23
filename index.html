@@ -22,6 +22,8 @@
         <button id="predict-publish" class="btn-outline" type="button" title="Publish your predictions so others can see them">📢 Publish</button>
         <span id="predict-clear" class="predict-clear-link" title="Clear cached predict scores">Clear</span>
         <span id="predict-identity" class="predict-identity hidden"></span>
+        <button id="auth-login-btn" class="btn-outline" type="button">🔑 Log in</button>
+        <button id="auth-logout-btn" class="btn-outline hidden" type="button" title="Log out">Log out</button>
     </div>
 
     <div id="filter-bar">
@@ -130,17 +132,19 @@
         </div>
     </div>
 
-    <!-- Nickname Modal -->
-    <div id="nickname-modal" class="modal hidden">
+    <!-- Auth Modal (login / signup) -->
+    <div id="auth-modal" class="modal hidden">
         <div class="modal-backdrop"></div>
         <div class="modal-card">
-            <h3>Pick a nickname</h3>
-            <p class="modal-sub">Shown on the public leaderboard with your predictions.</p>
-            <input type="text" id="nickname-input" maxlength="24" placeholder="e.g. GoalMachine" autocomplete="off">
-            <div id="nickname-error" class="modal-error hidden"></div>
-            <div class="modal-actions">
-                <button id="nickname-cancel" class="btn-outline" type="button">Cancel</button>
-                <button id="nickname-save" class="btn-solid" type="button">Save &amp; Publish</button>
+            <button class="overlay-close" type="button" aria-label="Close">&times;</button>
+            <h3 id="auth-title">Log in</h3>
+            <p class="modal-sub" id="auth-sub">Log in to publish predictions and join the leaderboard.</p>
+            <input type="text" id="auth-username" class="modal-input" maxlength="24" placeholder="Username" autocomplete="username" autocapitalize="off" spellcheck="false">
+            <input type="password" id="auth-password" class="modal-input" placeholder="Password" autocomplete="current-password">
+            <div id="auth-error" class="modal-error hidden"></div>
+            <div class="auth-actions">
+                <button id="auth-switch" class="auth-switch-link" type="button">Need an account? Sign up</button>
+                <button id="auth-submit" class="btn-solid" type="button">Log in</button>
             </div>
         </div>
     </div>

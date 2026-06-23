@@ -2217,7 +2217,7 @@ body.overlay-open {
 }
 .modal-card h3 { margin: 0 0 0.4rem; }
 .modal-sub { color: var(--text-muted); font-size: 0.9rem; margin: 0 0 1.2rem; }
-#nickname-input {
+.modal-input {
     width: 100%;
     padding: 0.7rem 0.9rem;
     background: var(--glass-bg);
@@ -2228,7 +2228,25 @@ body.overlay-open {
     font-size: 1rem;
     margin-bottom: 0.8rem;
 }
-#nickname-input:focus { outline: none; border-color: var(--primary); }
+.modal-input:focus { outline: none; border-color: var(--primary); }
+.auth-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    margin-top: 0.5rem;
+}
+.auth-switch-link {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-family: var(--font-family);
+    font-size: 0.85rem;
+    cursor: pointer;
+    padding: 0;
+    text-align: left;
+}
+.auth-switch-link:hover { color: var(--primary); }
 .modal-error {
     color: #ff5c5c;
     font-size: 0.85rem;

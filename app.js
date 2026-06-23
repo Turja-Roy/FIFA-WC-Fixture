@@ -2185,14 +2185,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         return res;
     }
 
-    async function ensureAuth() {
-        let { data: { session } } = await sb.auth.getSession();
-        if (!session) {
-            const { data, error } = await sb.auth.signInAnonymously();
-            if (error) throw error;
-            session = data.session;
-        }
-        return session.user;
+    // Username-based accounts. Supabase Auth needs an email, so we synthesize a
+    // stable hidden one from the username; the real account lives server-side and
+    // its session persists across browser restarts (unlike the old anon flow).
+    const AUTH_EMAIL_DOMAIN = '@wc26.local';
+    function usernameToEmail(u) {
+        return String(u).toLowerCase().replace(/[^a-z0-9._-]/g, '') + AUTH_EMAIL_DOMAIN;
+    }
+    function mapAuthError(error) {
+        const m = (error && error.message) || '';
+        if (/Invalid login credentials/i.test(m)) return 'Wrong username or password.';
+        if (/already registered/i.test(m)) return 'Username already taken — try logging in.';
+        if (/Email not confirmed/i.test(m)) return 'Server requires email confirmation — disable it in Supabase (Auth → Providers → Email).';
+        if (/at least 6/i.test(m)) return 'Password must be at least 6 characters.';
+        return m || 'Authentication failed.';
     }
 
     async function loadProfile(uid) {
@@ -2202,7 +2208,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function updateIdentityUI() {
         const idEl = document.getElementById('predict-identity');
-        const pubBtn = document.getElementById('predict-publish');
+        const loginBtn = document.getElementById('auth-login-btn');
+        const logoutBtn = document.getElementById('auth-logout-btn');
         if (idEl) {
             if (cloudUser) {
                 idEl.textContent = '👤 ' + cloudUser.nickname;
@@ -2211,7 +2218,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 idEl.classList.add('hidden');
             }
         }
-        if (pubBtn) pubBtn.textContent = cloudUser ? '📢 Publish' : '📢 Publish';
+        if (loginBtn) loginBtn.classList.toggle('hidden', !!cloudUser);
+        if (logoutBtn) logoutBtn.classList.toggle('hidden', !cloudUser);
     }
 
     // Tiered scoring: exact=5, correct goal diff=3, correct outcome=1, wrong=0.
@@ -2301,7 +2309,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function doPublish() {
         if (!sb) { alert('Cloud predictions not configured.'); return; }
-        if (!cloudUser) { openNicknameModal(); return; }
+        if (!cloudUser) { publishAfterAuth = true; openAuthModal('login'); return; }
         const { rows, skipped } = localPredictionRows(cloudUser.id);
         if (!rows.length) {
             alert(skipped
@@ -2317,43 +2325,108 @@ document.addEventListener('DOMContentLoaded', async () => {
         refreshPredictionViews();
     }
 
-    // ---- Nickname modal ----
-    function openNicknameModal() {
-        const modal = document.getElementById('nickname-modal');
-        const input = document.getElementById('nickname-input');
-        const err = document.getElementById('nickname-error');
-        if (!modal) return;
-        if (err) { err.classList.add('hidden'); err.textContent = ''; }
-        if (input) input.value = cloudUser ? cloudUser.nickname : '';
-        modal.classList.remove('hidden');
-        if (input) input.focus();
-    }
-    function closeNicknameModal() {
-        const modal = document.getElementById('nickname-modal');
-        if (modal) modal.classList.add('hidden');
+    // ---- Auth modal (login / signup) ----
+    let authMode = 'login';
+    let publishAfterAuth = false;
+
+    function setAuthError(m) {
+        const err = document.getElementById('auth-error');
+        if (!err) return;
+        if (m) { err.textContent = m; err.classList.remove('hidden'); }
+        else { err.textContent = ''; err.classList.add('hidden'); }
     }
 
-    async function saveNicknameAndPublish() {
-        const input = document.getElementById('nickname-input');
-        const err = document.getElementById('nickname-error');
-        const nick = (input.value || '').trim();
-        function showErr(m) { if (err) { err.textContent = m; err.classList.remove('hidden'); } }
-        if (nick.length < 2) { showErr('Nickname must be at least 2 characters.'); return; }
-        if (nick.length > 24) { showErr('Nickname too long (max 24).'); return; }
-        try {
-            const user = await ensureAuth();
-            const { error } = await sb.from('profiles').upsert({ id: user.id, nickname: nick });
-            if (error) {
-                showErr(error.code === '23505' ? 'That nickname is taken — pick another.' : error.message);
-                return;
-            }
-            cloudUser = { id: user.id, nickname: nick };
-            closeNicknameModal();
-            updateIdentityUI();
-            await doPublish();
-        } catch (e) {
-            showErr(e.message || 'Could not save nickname.');
+    function renderAuthMode() {
+        const title = document.getElementById('auth-title');
+        const sub = document.getElementById('auth-sub');
+        const submit = document.getElementById('auth-submit');
+        const sw = document.getElementById('auth-switch');
+        const pw = document.getElementById('auth-password');
+        if (authMode === 'signup') {
+            if (title) title.textContent = 'Sign up';
+            if (sub) sub.textContent = 'Create an account to publish predictions and join the leaderboard.';
+            if (submit) submit.textContent = 'Sign up';
+            if (sw) sw.textContent = 'Have an account? Log in';
+            if (pw) pw.autocomplete = 'new-password';
+        } else {
+            if (title) title.textContent = 'Log in';
+            if (sub) sub.textContent = 'Log in to publish predictions and join the leaderboard.';
+            if (submit) submit.textContent = 'Log in';
+            if (sw) sw.textContent = 'Need an account? Sign up';
+            if (pw) pw.autocomplete = 'current-password';
         }
+    }
+
+    function openAuthModal(mode) {
+        authMode = mode || 'login';
+        const modal = document.getElementById('auth-modal');
+        if (!modal) return;
+        setAuthError('');
+        renderAuthMode();
+        modal.classList.remove('hidden');
+        const u = document.getElementById('auth-username');
+        if (u) u.focus();
+    }
+    function closeAuthModal() {
+        const modal = document.getElementById('auth-modal');
+        if (modal) modal.classList.add('hidden');
+        publishAfterAuth = false;
+    }
+
+    async function submitAuth() {
+        if (!sb) { setAuthError('Cloud not configured.'); return; }
+        const uEl = document.getElementById('auth-username');
+        const pEl = document.getElementById('auth-password');
+        const submit = document.getElementById('auth-submit');
+        const username = (uEl.value || '').trim();
+        const password = pEl.value || '';
+        if (!/^[a-zA-Z0-9._-]{2,24}$/.test(username)) {
+            setAuthError('Username: 2–24 chars, letters/digits and . _ - only.'); return;
+        }
+        if (password.length < 6) { setAuthError('Password must be at least 6 characters.'); return; }
+        const email = usernameToEmail(username);
+        if (submit) submit.disabled = true;
+        setAuthError('');
+        try {
+            if (authMode === 'signup') {
+                const { data, error } = await sb.auth.signUp({ email, password });
+                if (error) { setAuthError(mapAuthError(error)); return; }
+                if (!data.session) {
+                    setAuthError('Account created, but the server requires email confirmation. Disable it in Supabase (Auth → Providers → Email) for username login.');
+                    return;
+                }
+                const { error: pErr } = await sb.from('profiles').upsert({ id: data.user.id, nickname: username });
+                if (pErr) {
+                    setAuthError(pErr.code === '23505' ? 'That username is taken — pick another.' : pErr.message);
+                    return;
+                }
+                cloudUser = { id: data.user.id, nickname: username };
+            } else {
+                const { data, error } = await sb.auth.signInWithPassword({ email, password });
+                if (error) { setAuthError(mapAuthError(error)); return; }
+                await loadProfile(data.user.id);
+                if (!cloudUser) cloudUser = { id: data.user.id, nickname: username };
+            }
+            const wantPublish = publishAfterAuth;
+            closeAuthModal();
+            updateIdentityUI();
+            await fetchOthersPredictions();
+            renderLeaderboard();
+            refreshPredictionViews();
+            if (wantPublish) await doPublish();
+        } catch (e) {
+            setAuthError((e && e.message) || 'Authentication failed.');
+        } finally {
+            if (submit) submit.disabled = false;
+        }
+    }
+
+    async function doLogout() {
+        if (sb) await sb.auth.signOut();
+        cloudUser = null;
+        updateIdentityUI();
+        renderLeaderboard();
+        refreshPredictionViews();
     }
 
     // ---- Per-match prediction reveal (inside the hover-expanded card) ----
@@ -2441,16 +2514,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     const publishBtn = document.getElementById('predict-publish');
     if (publishBtn) publishBtn.addEventListener('click', doPublish);
 
-    const nickSave = document.getElementById('nickname-save');
-    if (nickSave) nickSave.addEventListener('click', saveNicknameAndPublish);
-    const nickCancel = document.getElementById('nickname-cancel');
-    if (nickCancel) nickCancel.addEventListener('click', closeNicknameModal);
-    const nickModal = document.getElementById('nickname-modal');
-    if (nickModal) {
-        const bd = nickModal.querySelector('.modal-backdrop');
-        if (bd) bd.addEventListener('click', closeNicknameModal);
-        const ni = document.getElementById('nickname-input');
-        if (ni) ni.addEventListener('keydown', e => { if (e.key === 'Enter') saveNicknameAndPublish(); });
+    const loginBtn = document.getElementById('auth-login-btn');
+    if (loginBtn) loginBtn.addEventListener('click', () => openAuthModal('login'));
+    const logoutBtn = document.getElementById('auth-logout-btn');
+    if (logoutBtn) logoutBtn.addEventListener('click', doLogout);
+
+    const authSubmit = document.getElementById('auth-submit');
+    if (authSubmit) authSubmit.addEventListener('click', submitAuth);
+    const authSwitch = document.getElementById('auth-switch');
+    if (authSwitch) authSwitch.addEventListener('click', () => { openAuthModal(authMode === 'login' ? 'signup' : 'login'); });
+    const authModal = document.getElementById('auth-modal');
+    if (authModal) {
+        const bd = authModal.querySelector('.modal-backdrop');
+        if (bd) bd.addEventListener('click', closeAuthModal);
+        const cl = authModal.querySelector('.overlay-close');
+        if (cl) cl.addEventListener('click', closeAuthModal);
+        ['auth-username', 'auth-password'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth(); });
+        });
     }
     const predsModal = document.getElementById('preds-modal');
     if (predsModal) {
