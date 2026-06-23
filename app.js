@@ -2275,6 +2275,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         return { rows, skipped };
     }
 
+    async function fetchOwnPredictions() {
+        if (!sb || !cloudUser) return;
+        const { data, error } = await sb.from('predictions')
+            .select('match_num, score1, score2, pens1, pens2')
+            .eq('user_id', cloudUser.id)
+            .eq('published', true);
+        if (error) { console.warn('fetchOwnPredictions:', error.message); return; }
+        if (!data || !data.length) return;
+
+        let cache = {};
+        const existing = localStorage.getItem(PREDICT_CACHE_KEY);
+        if (existing) { try { cache = JSON.parse(existing); } catch (e) { cache = {}; } }
+
+        let changed = false;
+        for (const p of data) {
+            const key = String(p.match_num);
+            if (cache[key] && (cache[key].score1 !== '' || cache[key].score2 !== '')) continue;
+            let penalties = '';
+            if (p.pens1 != null && p.pens2 != null) penalties = p.pens1 + '\u2013' + p.pens2;
+            cache[key] = { score1: String(p.score1), score2: String(p.score2), penalties };
+            changed = true;
+        }
+
+        if (changed) localStorage.setItem(PREDICT_CACHE_KEY, JSON.stringify(cache));
+    }
+
     async function fetchOthersPredictions() {
         if (!sb) return;
         const { data, error } = await sb.from('predictions')
@@ -2427,6 +2453,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const wantPublish = publishAfterAuth;
             closeAuthModal();
             updateIdentityUI();
+            await fetchOwnPredictions();
             await fetchOthersPredictions();
             renderLeaderboard();
             refreshPredictionViews();
@@ -2522,6 +2549,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const { data: { session } } = await sb.auth.getSession();
             if (session) await loadProfile(session.user.id);
             updateIdentityUI();
+            await fetchOwnPredictions();
             await fetchOthersPredictions();
             renderLeaderboard();
             refreshPredictionViews();
