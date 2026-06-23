@@ -2618,6 +2618,58 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    // Sidebar toggle
+    const menuToggle = document.getElementById('menu-toggle');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarOverlay = document.getElementById('sidebar-overlay');
+    function openSidebar() {
+        if (!sidebar.classList.contains('hidden')) return;
+        menuToggle.textContent = '✕';
+        sidebarOverlay.classList.remove('hidden');
+        sidebar.classList.remove('hidden');
+        // force reflow to restart CSS animations
+        void sidebar.offsetWidth;
+        sidebar.querySelectorAll('li').forEach(li => {
+            li.style.animation = 'none';
+            void li.offsetWidth;
+            li.style.animation = '';
+        });
+    }
+
+    function closeSidebar() {
+        menuToggle.textContent = '☰';
+        sidebar.classList.add('hidden');
+        sidebarOverlay.classList.add('hidden');
+    }
+
+    function toggleSidebar() {
+        if (sidebar.classList.contains('hidden')) {
+            openSidebar();
+        } else {
+            closeSidebar();
+        }
+    }
+
+    function scrollToSection(id) {
+        const el = document.getElementById(id);
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    menuToggle.addEventListener('click', toggleSidebar);
+    sidebarOverlay.addEventListener('click', closeSidebar);
+
+    // Scroll first, then close sidebar on nav link click
+    sidebar.querySelectorAll('a').forEach(link => {
+        link.addEventListener('click', e => {
+            e.preventDefault();
+            const href = link.getAttribute('href');
+            if (href && href.startsWith('#')) {
+                scrollToSection(href.slice(1));
+            }
+            setTimeout(closeSidebar, 400);
+        });
+    });
+
     // Auto-refresh live scores every 30 seconds
     setInterval(async () => {
         if (predictMode) return; // skip while user is predicting

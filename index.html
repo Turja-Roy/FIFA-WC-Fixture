@@ -13,9 +13,21 @@
 <body>
     <div class="bg-animated"></div>
     
+    <button id="menu-toggle" class="hamburger" aria-label="Open navigation menu">☰</button>
     <header>
         <h1>World Cup 2026 Tracker</h1>
     </header>
+
+    <div id="sidebar-overlay" class="sidebar-overlay hidden"></div>
+    <nav id="sidebar" class="sidebar hidden">
+        <ul>
+            <li><a href="#upcoming-matches-section">Upcoming Matches</a></li>
+            <li><a href="#groups-section">Group Stage</a></li>
+            <li><a href="#knockout-section">Knockout Stage</a></li>
+            <li><a href="#standings-section">Group Standings</a></li>
+            <li><a href="#leaderboard-section">Leaderboard</a></li>
+        </ul>
+    </nav>
 
     <div id="predict-bar">
         <button id="predict-toggle" class="btn-outline" type="button">🔮 Predict Mode: OFF</button>
