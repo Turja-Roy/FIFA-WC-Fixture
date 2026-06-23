@@ -942,7 +942,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <tbody>`;
             
             teamList.forEach((t, i) => {
-                const rankClass = i === 0 ? 'standing-top' : i === 1 ? 'standing-second' : '';
+                const rankClass = i === 0 ? 'standing-top' : i === 1 ? 'standing-second' : i === 2 ? 'standing-third' : 'standing-last';
                 html += `
                     <tr class="${rankClass}">
                         <td class="team-cell">${getFlagHtml(t.code)} ${t.name}</td>

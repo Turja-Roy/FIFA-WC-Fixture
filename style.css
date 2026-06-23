@@ -702,11 +702,19 @@ footer a:hover {
 }
 
 .standings-table tr.standing-top .team-cell {
-    color: #5b8dd9;
+    color: #2e7d32;
 }
 
 .standings-table tr.standing-second .team-cell {
+    color: #5b8dd9;
+}
+
+.standings-table tr.standing-third .team-cell {
     color: #e8923a;
+}
+
+.standings-table tr.standing-last .team-cell {
+    color: #c62828;
 }
 
 /* Update Button Animation */
