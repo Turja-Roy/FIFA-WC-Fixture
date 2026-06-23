@@ -30,11 +30,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         'Korea Republic': 'South Korea',
         'Bosnia-Herzegovina': 'Bosnia & Herzegovina',
         'Côte d\'Ivoire': 'Ivory Coast',
+        'Cote d\'Ivoire': 'Ivory Coast',
         'Congo DR': 'DR Congo',
         'Cabo Verde': 'Cape Verde',
         'Czechia': 'Czech Republic',
         'Turkiye': 'Turkey',
-        'Türkiye': 'Turkey'
+        'Türkiye': 'Turkey',
+        'Curacao': 'Curaçao'
     };
 
     function getCountryCode(teamName) {
@@ -1373,7 +1375,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // OVERLAY
     // =============================
     const summaryCache = new Map();
+    const summaryFailedSet = new Set();
     const espnDateCache = new Map();
+    const espnDateFailedSet = new Set();
     const rosterCache = new Map();
     const pendingRosters = new Map();
 
@@ -1542,7 +1546,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const cacheKey = espnEventId + '_' + teamId;
         if (coreRosterCache.has(cacheKey)) return coreRosterCache.get(cacheKey);
         try {
-            const url = 'http://sports.core.api.espn.com/v2/sports/soccer/leagues/fifa.world/events/' + espnEventId + '/competitions/' + espnEventId + '/competitors/' + teamId + '/roster?lang=en&region=us';
+            const url = 'https://sports.core.api.espn.com/v2/sports/soccer/leagues/fifa.world/events/' + espnEventId + '/competitions/' + espnEventId + '/competitors/' + teamId + '/roster?lang=en&region=us';
             const resp = await fetch(url);
             if (!resp.ok) throw new Error('Core roster unavailable');
             const data = await resp.json();
@@ -1600,15 +1604,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function fetchEspnForMatch(match) {
         let dateStr = null;
         if (match.time) {
-            const d = new Date(match.time);
-            dateStr = d.getUTCFullYear() + String(d.getUTCMonth() + 1).padStart(2, '0') + String(d.getUTCDate()).padStart(2, '0');
+            // Extract local date directly from ISO string — UTC conversion
+            // gives wrong date for evening matches that cross midnight in UTC.
+            dateStr = match.time.substring(0, 10).replace(/-/g, '');
         }
         if (!dateStr) return false;
         const cacheKey = 'espn_date_' + dateStr;
-        let data;
+        let data = null;
         if (espnDateCache.has(cacheKey)) {
             data = espnDateCache.get(cacheKey);
-        } else {
+        } else if (!espnDateFailedSet.has(cacheKey)) {
             try {
                 const url = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=' + dateStr;
                 const resp = await fetch(url);
@@ -1616,7 +1621,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 espnDateCache.set(cacheKey, data);
             } catch (e) {
                 console.warn('ESPN date fetch failed:', e.message);
-                espnDateCache.set(cacheKey, null);
+                espnDateFailedSet.add(cacheKey);
                 return false;
             }
         }
@@ -2037,10 +2042,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!resp.ok) throw new Error('Summary not available');
             const data = await resp.json();
             summaryCache.set(espnEventId, data);
+            summaryFailedSet.delete(espnEventId);
             return data;
         } catch (e) {
             console.warn('ESPN summary unavailable:', e.message);
-            summaryCache.set(espnEventId, null);
+            summaryFailedSet.add(espnEventId);
             return null;
         }
     }
@@ -2053,6 +2059,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Try to fetch ESPN data for past matches if not already present
         if (!match._espnEventId) {
+            // Clear date failed state so retry is possible
+            if (match.time) {
+                const ds = match.time.substring(0, 10).replace(/-/g, '');
+                espnDateFailedSet.delete('espn_date_' + ds);
+            }
             await fetchEspnForMatch(match);
         }
 
@@ -2068,8 +2079,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         overlay.classList.remove('hidden');
         document.body.classList.add('overlay-open');
 
-        // Fetch lineups async
+        // Fetch lineups async (retry if previous attempt failed)
         if (match._espnEventId) {
+            summaryFailedSet.delete(match._espnEventId); // re-enable poll retry
             const summary = await fetchMatchSummary(match._espnEventId);
             const lineupsContainer = document.getElementById('ov-lineups-container');
             if (lineupsContainer) {
@@ -2137,16 +2149,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Predict mode toggle
     const predictBtn = document.getElementById('predict-toggle');
     if (predictBtn) {
-        predictBtn.addEventListener('click', () => {
+        predictBtn.addEventListener('click', async () => {
             predictMode = !predictMode;
-            if (originalMatchData) {
+            try {
                 if (predictMode) {
+                    // Restore clean data from last snapshot, then apply predictions
                     matchData = JSON.parse(JSON.stringify(originalMatchData));
-                    console.log('toggle: about to restorePredictData, group count', Object.keys(matchData.groups).length);
                     restorePredictData();
                 } else {
-                    matchData = JSON.parse(JSON.stringify(originalMatchData));
+                    // Re-fetch live data so lazy-loaded ESPN info isn't lost
+                    await loadData();
                 }
+            } catch (e) {
+                console.error('Predict toggle error:', e);
             }
             renderAll();
         });
@@ -2564,7 +2579,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         for (const m of candidates) {
             const eid = m._espnEventId;
-            if (m._espnStatusState === 'in' || !summaryCache.has(eid)) {
+            // Always refresh live matches; for completed, skip if previously failed or already cached
+            if (m._espnStatusState === 'in' || (!summaryFailedSet.has(eid) && !summaryCache.has(eid))) {
                 fetchMatchSummary(eid).catch(() => {});
             }
         }
