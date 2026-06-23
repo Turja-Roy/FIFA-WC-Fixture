@@ -583,6 +583,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             btn.textContent = predictMode ? '🔮 Predict Mode: ON' : '🔮 Predict Mode: OFF';
             btn.classList.toggle('active', predictMode);
         }
+        const publishBtn = document.getElementById('predict-publish');
+        if (publishBtn) publishBtn.classList.toggle('hidden', !predictMode);
     }
 
     function renderGroups() {

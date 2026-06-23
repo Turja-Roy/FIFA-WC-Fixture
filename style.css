@@ -1998,19 +1998,25 @@ body.overlay-open {
     }
 }
 
+.hidden { display: none !important; }
+
 /* Predict Mode Bar */
 #predict-bar {
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
     padding: 0.6rem 2rem;
     background: rgba(13, 17, 23, 0.85);
     border-bottom: 1px solid var(--glass-border);
 }
 
-#predict-toggle {
-    background: transparent;
+#predict-bar .btn-outline {
+    background: rgba(0, 0, 0, 0.45);
     border: 1px solid var(--glass-border);
     color: var(--text-muted);
-    padding: 0.35rem 1.2rem;
+    padding: 0.35rem 1rem;
     border-radius: 20px;
     font-family: var(--font-family);
     font-size: 0.82rem;
@@ -2018,14 +2024,18 @@ body.overlay-open {
     cursor: pointer;
     transition: var(--transition);
     letter-spacing: 0.3px;
+    display: inline-flex;
+    align-items: center;
+    height: 34px;
 }
 
-#predict-toggle:hover {
+#predict-bar .btn-outline:hover {
     border-color: var(--primary);
     color: var(--text-main);
+    background: rgba(255, 255, 255, 0.05);
 }
 
-#predict-toggle.active {
+#predict-bar .btn-outline.active {
     background: var(--primary);
     color: #000;
     border-color: var(--primary);
@@ -2038,9 +2048,9 @@ body.overlay-open {
     cursor: pointer;
     text-decoration: underline;
     text-underline-offset: 3px;
-    margin-left: 0.8rem;
     opacity: 0.6;
     transition: var(--transition);
+    white-space: nowrap;
 }
 .predict-clear-link:hover {
     opacity: 1;
@@ -2050,10 +2060,12 @@ body.overlay-open {
 @media (max-width: 768px) {
     #predict-bar {
         padding: 0.4rem 1rem;
+        gap: 0.4rem;
     }
-    #predict-toggle {
+    #predict-bar .btn-outline {
         font-size: 0.75rem;
-        padding: 0.25rem 0.9rem;
+        padding: 0.25rem 0.8rem;
+        height: 30px;
     }
 }
 
@@ -2138,10 +2150,12 @@ body.overlay-open {
     color: var(--primary);
     font-weight: 600;
     font-size: 0.9rem;
-    padding: 0.3rem 0.6rem;
+    padding: 0.3rem 0.8rem;
+    margin: 0 0.2rem;
     border: 1px solid var(--glass-border);
     border-radius: 999px;
     background: var(--glass-bg);
+    white-space: nowrap;
 }
 #predict-publish.published-flash {
     border-color: var(--primary);
