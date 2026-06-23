@@ -405,6 +405,14 @@ section h2::after {
   -moz-appearance: textfield;
 }
 
+.score-input.predicted {
+    color: #ffc107;
+}
+
+.penalties-input.predicted {
+    color: #ffc107;
+}
+
 .flag-icon {
     width: 18px;
     height: auto;

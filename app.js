@@ -493,6 +493,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const c = cache[String(m.id)];
                     if (c && (c.score1 !== '' || c.score2 !== '')) {
                         m.score1 = c.score1; m.score2 = c.score2;
+                        m._predicted = true;
                         restoreCount++;
                     }
                 }
@@ -503,6 +504,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (c && (c.score1 !== '' || c.score2 !== '')) {
                         m.score1 = c.score1; m.score2 = c.score2;
                         if (c.penalties) m.penalties = c.penalties;
+                        m._predicted = true;
                         restoreCount++;
                     }
                 }
@@ -524,6 +526,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const m = matchData.groups[group].find(x => x.id == matchId);
             if (m) {
                 m.score1 = s1; m.score2 = s2;
+                m._predicted = true;
                 predictModifiedIds.add(matchId);
                 persistPredictData();
                 return 'group';
@@ -534,6 +537,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (m) {
                 m.score1 = s1; m.score2 = s2;
                 if (pens !== null) m.penalties = pens;
+                m._predicted = true;
                 predictModifiedIds.add(matchId);
                 persistPredictData();
                 return 'knockout';
@@ -639,9 +643,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <div class="match-teams">
                         <div class="team ${showResult ? (winnerSide === '1' ? 'winner' : winnerSide === '2' ? 'loser' : 'draw') : ''}">${getFlagHtml(match.code1)}<span class="team-name">${match.team1}</span></div>
                         <div class="score-box">
-                            <input type="number" class="score-input" data-id="${match.id}" data-team="1" value="${match.score1}" min="0">
+                            <input type="number" class="score-input${match._predicted ? ' predicted' : ''}" data-id="${match.id}" data-team="1" value="${match.score1}" min="0">
                             <span>-</span>
-                            <input type="number" class="score-input" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
+                            <input type="number" class="score-input${match._predicted ? ' predicted' : ''}" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
                         </div>
                         <div class="team right ${showResult ? (winnerSide === '2' ? 'winner' : winnerSide === '1' ? 'loser' : 'draw') : ''}"><span class="team-name">${match.team2}</span>${getFlagHtml(match.code2)}</div>
                     </div>
@@ -668,7 +672,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const showResult = isLive || status === 'completed';
         const liveText = match._liveDetail || 'LIVE';
         const liveBadge = isLive ? `<div class="live-badge" style="top: -15px; right: -5px;">${liveText} <span class="pulsing-dot"></span></div>` : '';
-        let pensInput = isFinal || match.id > 72 ? `<input type="text" class="penalties-input" data-id="${match.id}" placeholder="" value="${match.penalties || ''}">` : '';
+        let pensInput = isFinal || match.id > 72 ? `<input type="text" class="penalties-input${match._predicted ? ' predicted' : ''}" data-id="${match.id}" placeholder="" value="${match.penalties || ''}">` : '';
         const watchable = isMatchWatchable(match.time);
         const watchBtn = watchable ? `<a href="${getLiveWatchUrl(match)}" target="_blank" class="live-watch-btn" onclick="event.stopPropagation()">▶ Live</a>` : '';
 
@@ -716,11 +720,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="match-time-label ko-time">${formatTime(match.time)}</div>
                 <div class="ko-team-row ${showResult ? (winnerSide === '1' ? 'winner' : winnerSide === '2' ? 'loser' : 'draw') : ''}">
                     <span class="ko-team" title="${t1Tt}">${getFlagHtml(t1Code)}${t1Name}${t1Incomplete ? warnIcon : ''}</span>
-                    <input type="number" class="score-input ko-score" data-id="${match.id}" data-team="1" value="${match.score1}" min="0">
+                    <input type="number" class="score-input ko-score${match._predicted ? ' predicted' : ''}" data-id="${match.id}" data-team="1" value="${match.score1}" min="0">
                 </div>
                 <div class="ko-team-row ${showResult ? (winnerSide === '2' ? 'winner' : winnerSide === '1' ? 'loser' : 'draw') : ''}">
                     <span class="ko-team" title="${t2Tt}">${getFlagHtml(t2Code)}${t2Name}${t2Incomplete ? warnIcon : ''}</span>
-                    <input type="number" class="score-input ko-score" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
+                    <input type="number" class="score-input ko-score${match._predicted ? ' predicted' : ''}" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
                 </div>
                 ${pensInput}
                 ${watchBtn}
