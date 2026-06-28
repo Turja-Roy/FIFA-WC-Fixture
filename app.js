@@ -415,11 +415,68 @@ document.addEventListener('DOMContentLoaded', async () => {
         return (matchData.groups[groupName] || []).every(m => m.score1 !== '' && m.score2 !== '');
     }
 
+    function computeBestThirdPlaced() {
+        const thirdPlaced = [];
+        for (const groupName of Object.keys(matchData.groups).sort()) {
+            if (!isGroupComplete(groupName)) continue;
+            const standings = computeGroupStandings(groupName);
+            const third = standings[2];
+            if (third) {
+                third._group = groupName;
+                thirdPlaced.push(third);
+            }
+        }
+        thirdPlaced.sort((a, b) => {
+            if (b.pts !== a.pts) return b.pts - a.pts;
+            if (b.gd !== a.gd) return b.gd - a.gd;
+            if (b.gf !== a.gf) return b.gf - a.gf;
+            return a.name.localeCompare(b.name);
+        });
+        return thirdPlaced;
+    }
+
+    // Maps each Round-of-32 third-place slot's eligibility set (the sorted
+    // group letters openfootball lists, e.g. "3A/B/C/D/F") to the group-winner
+    // slot that occupies that match, per FIFA's official schedule. Used to look
+    // up the Annexe C allocation table so each qualifying third-placed team is
+    // assigned to exactly one match (no duplicates).
+    const THIRD_SLOT_WINNER = {
+        'ABCDF': '1E', 'CDFGH': '1I', 'CEFHI': '1A', 'EHIJK': '1L',
+        'BEFIJ': '1D', 'AEHIJ': '1G', 'EFGIJ': '1B', 'DEIJL': '1K'
+    };
+
     function resolveBracketPosition(pos) {
         const m = pos.match(/^(\d)([A-Z](?:\/[A-Z])*)$/);
         if (!m) return null;
         const position = parseInt(m[1]);
         const groups = m[2].split('/');
+
+        if (position === 3) {
+            const bestThird = computeBestThirdPlaced();
+            const qualifiedGroups = bestThird.slice(0, 8).map(t => t._group);
+            const alloc = window.WC26_THIRD_ALLOCATION || {};
+            const comboKey = qualifiedGroups.slice().sort().join('');
+            const winnerSlot = THIRD_SLOT_WINNER[groups.slice().sort().join('')];
+            // Official Annexe C assignment (needs all 8 qualifiers known).
+            if (qualifiedGroups.length === 8 && alloc[comboKey] && winnerSlot) {
+                const group = alloc[comboKey][winnerSlot];
+                if (group) {
+                    const standings = computeGroupStandings(group);
+                    const team = standings[2];
+                    if (team) return { name: team.name, code: team.code, group, incomplete: !isGroupComplete(group) };
+                }
+            }
+            // Fallback (groups still incomplete): provisional, may be imprecise.
+            const qualifiedSet = new Set(qualifiedGroups);
+            for (const group of groups) {
+                if (qualifiedSet.has(group)) {
+                    const standings = computeGroupStandings(group);
+                    const team = standings[2];
+                    if (team) return { name: team.name, code: team.code, group, incomplete: !isGroupComplete(group) };
+                }
+            }
+        }
+
         for (const group of groups) {
             const standings = computeGroupStandings(group);
             const team = standings[position - 1];
@@ -578,6 +635,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function applyPredictMode() {
         const inputs = document.querySelectorAll('.score-input, .penalties-input');
         inputs.forEach(inp => {
+            if (inp.classList.contains('score-input-locked')) return;
             if (predictMode) {
                 inp.removeAttribute('readonly');
             } else {
@@ -638,15 +696,39 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const showInfoBtn = isMatchFinished(match) || isLive;
                 const infoBtn = showInfoBtn ? `<button class="match-info-btn" data-match-id="${match.id}" title="Match details">ℹ Stats</button>` : '';
 
+                let showCombined = false;
+                let origS1 = match.score1, origS2 = match.score2;
+                if (predictMode && match._predicted && status === 'completed') {
+                    const orig = findOriginalMatch(match.id);
+                    if (orig) {
+                        const origCompleted = orig._espnStatusState === 'post' || (orig.score1 !== '' && orig.score2 !== '');
+                        if (origCompleted) {
+                            showCombined = true;
+                            origS1 = orig.score1;
+                            origS2 = orig.score2;
+                        }
+                    }
+                }
+
+                const pCls = match._predicted && !showCombined ? ' predicted' : '';
+                const scoreHtml = showCombined
+                    ? `<div class="score-box">
+                            <input type="number" class="score-input score-input-locked" data-id="${match.id}" data-team="1" value="${origS1}" min="0" readonly>
+                            <span>-</span>
+                            <input type="number" class="score-input score-input-locked" data-id="${match.id}" data-team="2" value="${origS2}" min="0" readonly>
+                        </div>
+                        <span class="predicted-score-diff">${match.score1}–${match.score2}</span>`
+                    : `<div class="score-box">
+                            <input type="number" class="score-input${pCls}" data-id="${match.id}" data-team="1" value="${match.score1}" min="0">
+                            <span>-</span>
+                            <input type="number" class="score-input${pCls}" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
+                        </div>`;
+
                 row.innerHTML = `
                     ${liveBadge}
                     <div class="match-teams">
                         <div class="team ${showResult ? (winnerSide === '1' ? 'winner' : winnerSide === '2' ? 'loser' : 'draw') : ''}">${getFlagHtml(match.code1)}<span class="team-name">${match.team1}</span></div>
-                        <div class="score-box">
-                            <input type="number" class="score-input${match._predicted ? ' predicted' : ''}" data-id="${match.id}" data-team="1" value="${match.score1}" min="0">
-                            <span>-</span>
-                            <input type="number" class="score-input${match._predicted ? ' predicted' : ''}" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
-                        </div>
+                        ${scoreHtml}
                         <div class="team right ${showResult ? (winnerSide === '2' ? 'winner' : winnerSide === '1' ? 'loser' : 'draw') : ''}"><span class="team-name">${match.team2}</span>${getFlagHtml(match.code2)}</div>
                     </div>
                     ${watchBtn}
@@ -672,7 +754,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         const showResult = isLive || status === 'completed';
         const liveText = match._liveDetail || 'LIVE';
         const liveBadge = isLive ? `<div class="live-badge" style="top: -15px; right: -5px;">${liveText} <span class="pulsing-dot"></span></div>` : '';
-        let pensInput = isFinal || match.id > 72 ? `<input type="text" class="penalties-input${match._predicted ? ' predicted' : ''}" data-id="${match.id}" placeholder="" value="${match.penalties || ''}">` : '';
+
+        let showCombined = false;
+        let origS1 = match.score1, origS2 = match.score2;
+        let origPens = match.penalties || '';
+        if (predictMode && match._predicted && status === 'completed') {
+            const orig = findOriginalMatch(match.id);
+            if (orig) {
+                const origCompleted = orig._espnStatusState === 'post' || (orig.score1 !== '' && orig.score2 !== '');
+                if (origCompleted) {
+                    showCombined = true;
+                    origS1 = orig.score1;
+                    origS2 = orig.score2;
+                    origPens = orig.penalties || '';
+                }
+            }
+        }
+        const koPCls = match._predicted && !showCombined ? ' predicted' : '';
+
+        let pensInput = '';
+        if (isFinal || match.id > 72) {
+            if (showCombined) {
+                pensInput = `<input type="text" class="penalties-input score-input-locked" data-id="${match.id}" placeholder="" value="${origPens}" readonly><span class="predicted-score-diff">${match.penalties || ''}</span>`;
+            } else {
+                pensInput = `<input type="text" class="penalties-input${match._predicted ? ' predicted' : ''}" data-id="${match.id}" placeholder="" value="${match.penalties || ''}">`;
+            }
+        }
         const watchable = isMatchWatchable(match.time);
         const watchBtn = watchable ? `<a href="${getLiveWatchUrl(match)}" target="_blank" class="live-watch-btn" onclick="event.stopPropagation()">▶ Live</a>` : '';
 
@@ -720,11 +827,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="match-time-label ko-time">${formatTime(match.time)}</div>
                 <div class="ko-team-row ${showResult ? (winnerSide === '1' ? 'winner' : winnerSide === '2' ? 'loser' : 'draw') : ''}">
                     <span class="ko-team" title="${t1Tt}">${getFlagHtml(t1Code)}${t1Name}${t1Incomplete ? warnIcon : ''}</span>
-                    <input type="number" class="score-input ko-score${match._predicted ? ' predicted' : ''}" data-id="${match.id}" data-team="1" value="${match.score1}" min="0">
+                    <input type="number" class="score-input ko-score${koPCls}${showCombined ? ' score-input-locked' : ''}" data-id="${match.id}" data-team="1" value="${showCombined ? origS1 : match.score1}"${showCombined ? ' readonly' : ''} min="0">
+                    ${showCombined ? `<span class="predicted-score-diff">${match.score1}</span>` : ''}
                 </div>
                 <div class="ko-team-row ${showResult ? (winnerSide === '2' ? 'winner' : winnerSide === '1' ? 'loser' : 'draw') : ''}">
                     <span class="ko-team" title="${t2Tt}">${getFlagHtml(t2Code)}${t2Name}${t2Incomplete ? warnIcon : ''}</span>
-                    <input type="number" class="score-input ko-score${match._predicted ? ' predicted' : ''}" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
+                    <input type="number" class="score-input ko-score${koPCls}${showCombined ? ' score-input-locked' : ''}" data-id="${match.id}" data-team="2" value="${showCombined ? origS2 : match.score2}"${showCombined ? ' readonly' : ''} min="0">
+                    ${showCombined ? `<span class="predicted-score-diff">${match.score2}</span>` : ''}
                 </div>
                 ${pensInput}
                 ${watchBtn}
@@ -773,17 +882,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
 
             const prevStorage = roundNames[rIdx - 1].storage;
-            const curStorage = roundNames[rIdx].storage;
             const prevMatches = matchData.knockout[prevStorage] || [];
-            const matches = matchData.knockout[curStorage] || [];
-            const matchIdx = matches.findIndex(m => m.id === match.id);
-            if (matchIdx === -1) return null;
 
-            const prevIdx1 = matchIdx * 2;
-            const prevIdx2 = matchIdx * 2 + 1;
+            function resolveFromRef(raw) {
+                const ref = raw.match(/^([WL])(\d+)$/);
+                if (!ref) {
+                    const r = resolveBracketPosition(raw);
+                    return r ? { name: r.name, code: r.code } : null;
+                }
+                const refId = parseInt(ref[2]);
+                const pm = prevMatches.find(m => m.id === refId);
+                if (!pm) return null;
+                return getKnockoutWinner(pm);
+            }
 
-            const w1 = prevMatches[prevIdx1] ? getKnockoutWinner(prevMatches[prevIdx1]) : null;
-            const w2 = prevMatches[prevIdx2] ? getKnockoutWinner(prevMatches[prevIdx2]) : null;
+            const w1 = resolveFromRef(match.team1);
+            const w2 = resolveFromRef(match.team2);
 
             return {
                 t1: w1 ? w1.name : match.team1,
@@ -815,11 +929,35 @@ document.addEventListener('DOMContentLoaded', async () => {
             return col;
         };
 
-        // Left Bracket
-        container.appendChild(renderCol(r32.slice(0, 8), 'left-col'));
-        container.appendChild(renderCol(r16.slice(0, 4), 'left-col'));
-        container.appendChild(renderCol(qf.slice(0, 2), 'left-col'));
-        container.appendChild(renderCol([sf[0]], 'left-col'));
+        // FIFA 2026 R32 match numbering is interleaved, NOT a clean sequential
+        // split (left != 73-80, right != 81-88). Slicing by id scrambled the
+        // pairings. Instead walk the W##/L## reference tree down from each
+        // semi-final so visually adjacent matches actually feed the next round.
+        const koById = {};
+        for (const rr in matchData.knockout) {
+            for (const m of matchData.knockout[rr]) koById[m.id] = m;
+        }
+        const feederMatches = (m) => [m.team1, m.team2].map(t => {
+            const ref = String(t).match(/^[WL](\d+)$/);
+            return ref ? koById[parseInt(ref[1])] : null;
+        });
+        const collectByLevel = (root, level, acc) => {
+            if (!root) return;
+            (acc[level] = acc[level] || []).push(root);
+            const [f1, f2] = feederMatches(root);
+            collectByLevel(f1, level + 1, acc);
+            collectByLevel(f2, level + 1, acc);
+        };
+        // level 0 = SF, 1 = QF, 2 = R16, 3 = R32
+        const leftAcc = {}, rightAcc = {};
+        if (sf[0]) collectByLevel(sf[0], 0, leftAcc);
+        if (sf[1]) collectByLevel(sf[1], 0, rightAcc);
+
+        // Left Bracket (R32 -> SF)
+        container.appendChild(renderCol(leftAcc[3] || [], 'left-col'));
+        container.appendChild(renderCol(leftAcc[2] || [], 'left-col'));
+        container.appendChild(renderCol(leftAcc[1] || [], 'left-col'));
+        container.appendChild(renderCol(leftAcc[0] || [], 'left-col'));
 
         // Center Final
         const centerCol = document.createElement('div');
@@ -827,11 +965,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (finalMatch) centerCol.innerHTML = createKnockoutMatchHtml(finalMatch, true, getResolvedBracketInfo(finalMatch));
         container.appendChild(centerCol);
 
-        // Right Bracket
-        container.appendChild(renderCol([sf[1]], 'right-col'));
-        container.appendChild(renderCol(qf.slice(2, 4), 'right-col'));
-        container.appendChild(renderCol(r16.slice(4, 8), 'right-col'));
-        container.appendChild(renderCol(r32.slice(8, 16), 'right-col'));
+        // Right Bracket (SF -> R32)
+        container.appendChild(renderCol(rightAcc[0] || [], 'right-col'));
+        container.appendChild(renderCol(rightAcc[1] || [], 'right-col'));
+        container.appendChild(renderCol(rightAcc[2] || [], 'right-col'));
+        container.appendChild(renderCol(rightAcc[3] || [], 'right-col'));
     }
 
     function renderUpcoming() {
@@ -875,18 +1013,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             const mappedStage = match.group ? 'Group Stage' : (stageMap[match.round] || match.round || 'Knockout');
             const mappedGroup = match.group ? match.group.replace('Group ', '') : '';
 
+            let displayT1 = match.team1, displayC1 = match.code1;
+            let displayT2 = match.team2, displayC2 = match.code2;
+            if (match.round === 'Round of 32') {
+                const r1 = resolveBracketPosition(match.team1);
+                const r2 = resolveBracketPosition(match.team2);
+                if (r1) { displayT1 = r1.name; displayC1 = r1.code; }
+                if (r2) { displayT2 = r2.name; displayC2 = r2.code; }
+            }
+
             card.dataset.matchId = match.id;
-            card.dataset.team1 = match.team1;
-            card.dataset.team2 = match.team2;
+            card.dataset.team1 = displayT1;
+            card.dataset.team2 = displayT2;
             card.dataset.stadium = match.stadium;
             card.dataset.city = getCityFromStadium(match.stadium);
             card.dataset.group = mappedGroup;
             card.dataset.stage = mappedStage;
             card.dataset.status = status;
             card.dataset.time = match.time;
-
-            const team1Display = getFlagHtml(match.code1) || `<span style="font-size: 0.85rem">${match.team1}</span>`;
-            const team2Display = getFlagHtml(match.code2) || `<span style="font-size: 0.85rem">${match.team2}</span>`;
+            const team1Display = getFlagHtml(displayC1) || `<span style="font-size: 0.85rem">${displayT1}</span>`;
+            const team2Display = getFlagHtml(displayC2) || `<span style="font-size: 0.85rem">${displayT2}</span>`;
             const liveText = match._liveDetail || 'LIVE';
             const liveBadge = isLive ? `<div class="live-badge">${liveText} <span class="pulsing-dot"></span></div>` : '';
             const scoreDisplay = (isLive && match.score1 !== '' && match.score2 !== '')

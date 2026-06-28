@@ -536,6 +536,14 @@ section h2::after {
     box-shadow: 0 0 10px var(--primary-dim);
 }
 
+.score-input[readonly] {
+    cursor: default;
+}
+.score-input[readonly]:focus {
+    border-color: var(--glass-border);
+    box-shadow: none;
+}
+
 .score-input::-webkit-outer-spin-button,
 .score-input::-webkit-inner-spin-button {
   -webkit-appearance: none;
@@ -552,6 +560,18 @@ section h2::after {
 
 .penalties-input.predicted {
     color: #ffc107;
+}
+
+.predicted-score-diff {
+    color: #999;
+    font-weight: 600;
+    font-size: 0.75rem;
+    margin-left: 0.25rem;
+    white-space: nowrap;
+}
+
+.ko-team-row .predicted-score-diff {
+    font-size: 0.65rem;
 }
 
 .flag-icon {
