@@ -2,6 +2,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     let matchData = null;
     let originalMatchData = null;
     let predictMode = false;
+    // false = "original override" (default): completed matches colored by their
+    // real result. true = "prediction override": colored by predicted scores.
+    let predictOverride = false;
     const STORAGE_KEY = 'wc2026_scores';
 
     // Cloud-prediction state (declared early: renderAll runs at init, before
@@ -237,8 +240,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function renderAll() {
-        renderGroups();
         renderBracket();
+        renderGroups();
         renderUpcoming();
         renderStandings();
         applyPredictMode();
@@ -649,6 +652,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         const publishBtn = document.getElementById('predict-publish');
         if (publishBtn) publishBtn.classList.toggle('hidden', !predictMode);
+        const ovBtn = document.getElementById('predict-override-toggle');
+        if (ovBtn) {
+            ovBtn.classList.toggle('hidden', !predictMode);
+            ovBtn.textContent = predictOverride ? '🎯 Prediction Override' : '🎯 Original Override';
+            ovBtn.classList.toggle('active', predictOverride);
+        }
     }
 
     function renderGroups() {
@@ -670,7 +679,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const row = document.createElement('div');
                 const status = getMatchStatus(match);
                 const isLive = status === 'live';
-                const winnerSide = getMatchWinnerSide(match);
+                let winnerSide = getMatchWinnerSide(match);
                 const showResult = isLive || status === 'completed';
 
                 row.className = `match-row hover-target ${isLive ? 'live-match' : ''} ${status === 'completed' ? 'completed-match' : ''}`;
@@ -711,18 +720,35 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 const pCls = match._predicted && !showCombined ? ' predicted' : '';
-                const scoreHtml = showCombined
-                    ? `<div class="score-box">
-                            <input type="number" class="score-input score-input-locked" data-id="${match.id}" data-team="1" value="${origS1}" min="0" readonly>
+                let scoreHtml;
+                if (showCombined) {
+                    // Inside box = scores that decide colors. Outside (either
+                    // side) = the other scores, dimmed.
+                    const insideS1 = predictOverride ? match.score1 : origS1;
+                    const insideS2 = predictOverride ? match.score2 : origS2;
+                    const outS1 = predictOverride ? origS1 : match.score1;
+                    const outS2 = predictOverride ? origS2 : match.score2;
+                    const outCls = predictOverride ? 'side-score original-side' : 'side-score predicted-side';
+                    const inEditable = predictOverride; // predicted scores stay editable
+                    const inCls = inEditable ? ' predicted' : ' score-input-locked';
+                    const roAttr = inEditable ? '' : ' readonly';
+                    winnerSide = predictOverride
+                        ? getMatchWinnerSide(match)
+                        : getMatchWinnerSide({ score1: origS1, score2: origS2 });
+                    scoreHtml = `<span class="${outCls}">${outS1}</span>
+                        <div class="score-box">
+                            <input type="number" class="score-input${inCls}" data-id="${match.id}" data-team="1" value="${insideS1}" min="0"${roAttr}>
                             <span>-</span>
-                            <input type="number" class="score-input score-input-locked" data-id="${match.id}" data-team="2" value="${origS2}" min="0" readonly>
+                            <input type="number" class="score-input${inCls}" data-id="${match.id}" data-team="2" value="${insideS2}" min="0"${roAttr}>
                         </div>
-                        <span class="predicted-score-diff">${match.score1}–${match.score2}</span>`
-                    : `<div class="score-box">
+                        <span class="${outCls}">${outS2}</span>`;
+                } else {
+                    scoreHtml = `<div class="score-box">
                             <input type="number" class="score-input${pCls}" data-id="${match.id}" data-team="1" value="${match.score1}" min="0">
                             <span>-</span>
                             <input type="number" class="score-input${pCls}" data-id="${match.id}" data-team="2" value="${match.score2}" min="0">
                         </div>`;
+                }
 
                 row.innerHTML = `
                     ${liveBadge}
@@ -750,7 +776,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!match) return '';
         const status = getMatchStatus(match);
         const isLive = status === 'live';
-        const winnerSide = getMatchWinnerSide(match);
+        let winnerSide = getMatchWinnerSide(match);
         const showResult = isLive || status === 'completed';
         const liveText = match._liveDetail || 'LIVE';
         const liveBadge = isLive ? `<div class="live-badge" style="top: -15px; right: -5px;">${liveText} <span class="pulsing-dot"></span></div>` : '';
@@ -772,10 +798,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         const koPCls = match._predicted && !showCombined ? ' predicted' : '';
 
+        // Inside box vs. outside (dimmed) scores for completed predicted matches.
+        const koInS1 = predictOverride ? match.score1 : origS1;
+        const koInS2 = predictOverride ? match.score2 : origS2;
+        const koOutS1 = predictOverride ? origS1 : match.score1;
+        const koOutS2 = predictOverride ? origS2 : match.score2;
+        const koInPens = predictOverride ? (match.penalties || '') : origPens;
+        const koOutPens = predictOverride ? origPens : (match.penalties || '');
+        const koOutCls = predictOverride ? 'side-score original-side' : 'side-score predicted-side';
+        const koInEditable = predictOverride;
+        const koInCls = showCombined ? (koInEditable ? ' predicted' : ' score-input-locked') : koPCls;
+        if (showCombined) {
+            winnerSide = predictOverride
+                ? getMatchWinnerSide(match)
+                : getMatchWinnerSide({ score1: origS1, score2: origS2, penalties: origPens });
+        }
+
         let pensInput = '';
         if (isFinal || match.id > 72) {
             if (showCombined) {
-                pensInput = `<input type="text" class="penalties-input score-input-locked" data-id="${match.id}" placeholder="" value="${origPens}" readonly><span class="predicted-score-diff">${match.penalties || ''}</span>`;
+                const pRo = koInEditable ? '' : ' readonly';
+                const pInCls = koInEditable ? ' predicted' : ' score-input-locked';
+                pensInput = `<input type="text" class="penalties-input${pInCls}" data-id="${match.id}" placeholder="" value="${koInPens}"${pRo}><span class="${koOutCls}">${koOutPens}</span>`;
             } else {
                 pensInput = `<input type="text" class="penalties-input${match._predicted ? ' predicted' : ''}" data-id="${match.id}" placeholder="" value="${match.penalties || ''}">`;
             }
@@ -827,13 +871,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 <div class="match-time-label ko-time">${formatTime(match.time)}</div>
                 <div class="ko-team-row ${showResult ? (winnerSide === '1' ? 'winner' : winnerSide === '2' ? 'loser' : 'draw') : ''}">
                     <span class="ko-team" title="${t1Tt}">${getFlagHtml(t1Code)}${t1Name}${t1Incomplete ? warnIcon : ''}</span>
-                    <input type="number" class="score-input ko-score${koPCls}${showCombined ? ' score-input-locked' : ''}" data-id="${match.id}" data-team="1" value="${showCombined ? origS1 : match.score1}"${showCombined ? ' readonly' : ''} min="0">
-                    ${showCombined ? `<span class="predicted-score-diff">${match.score1}</span>` : ''}
+                    <input type="number" class="score-input ko-score${koInCls}" data-id="${match.id}" data-team="1" value="${showCombined ? koInS1 : match.score1}"${showCombined && !koInEditable ? ' readonly' : ''} min="0">
+                    ${showCombined ? `<span class="${koOutCls}">${koOutS1}</span>` : ''}
                 </div>
                 <div class="ko-team-row ${showResult ? (winnerSide === '2' ? 'winner' : winnerSide === '1' ? 'loser' : 'draw') : ''}">
                     <span class="ko-team" title="${t2Tt}">${getFlagHtml(t2Code)}${t2Name}${t2Incomplete ? warnIcon : ''}</span>
-                    <input type="number" class="score-input ko-score${koPCls}${showCombined ? ' score-input-locked' : ''}" data-id="${match.id}" data-team="2" value="${showCombined ? origS2 : match.score2}"${showCombined ? ' readonly' : ''} min="0">
-                    ${showCombined ? `<span class="predicted-score-diff">${match.score2}</span>` : ''}
+                    <input type="number" class="score-input ko-score${koInCls}" data-id="${match.id}" data-team="2" value="${showCombined ? koInS2 : match.score2}"${showCombined && !koInEditable ? ' readonly' : ''} min="0">
+                    ${showCombined ? `<span class="${koOutCls}">${koOutS2}</span>` : ''}
                 </div>
                 ${pensInput}
                 ${watchBtn}
@@ -885,15 +929,32 @@ document.addEventListener('DOMContentLoaded', async () => {
             const prevMatches = matchData.knockout[prevStorage] || [];
 
             function resolveFromRef(raw) {
-                const ref = raw.match(/^([WL])(\d+)$/);
+                const ref = String(raw).match(/^([WL])(\d+)$/);
                 if (!ref) {
                     const r = resolveBracketPosition(raw);
-                    return r ? { name: r.name, code: r.code } : null;
+                    return r ? { name: r.name, code: r.code, incomplete: !!r.incomplete } : null;
                 }
+                const wantWinner = ref[1] === 'W';
                 const refId = parseInt(ref[2]);
                 const pm = prevMatches.find(m => m.id === refId);
                 if (!pm) return null;
-                return getKnockoutWinner(pm);
+
+                // Need the actual played/predicted result of the feeder match.
+                const side = getMatchWinnerSide(pm);
+                if (!side) return null; // undecided → keep placeholder
+                const pick = wantWinner ? side : (side === '1' ? '2' : '1');
+
+                // Recurse so the feeder's own teams (which may themselves be
+                // W##/L## or group placeholders) are fully resolved.
+                const info = getResolvedBracketInfo(pm);
+                if (info) {
+                    return pick === '1'
+                        ? { name: info.t1, code: info.c1, incomplete: !!info.i1 }
+                        : { name: info.t2, code: info.c2, incomplete: !!info.i2 };
+                }
+                return pick === '1'
+                    ? { name: pm.team1, code: pm.code1, incomplete: false }
+                    : { name: pm.team2, code: pm.code2, incomplete: false };
             }
 
             const w1 = resolveFromRef(match.team1);
@@ -904,8 +965,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 t2: w2 ? w2.name : match.team2,
                 c1: w1 ? w1.code : match.code1,
                 c2: w2 ? w2.code : match.code2,
-                i1: !w1,
-                i2: !w2
+                i1: w1 ? !!w1.incomplete : true,
+                i2: w2 ? !!w2.incomplete : true
             };
         }
 
@@ -2314,6 +2375,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.error('Predict toggle error:', e);
             }
             renderAll();
+        });
+    }
+
+    const overrideBtn = document.getElementById('predict-override-toggle');
+    if (overrideBtn) {
+        overrideBtn.addEventListener('click', () => {
+            predictOverride = !predictOverride;
+            renderAll(); // re-renders + calls applyPredictMode (updates button)
         });
     }
 

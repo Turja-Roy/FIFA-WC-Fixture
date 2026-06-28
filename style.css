@@ -445,9 +445,7 @@ section h2::after {
 }
 
 .live-match .team.winner::after,
-.completed-match .team.winner::after,
-.live-match .ko-team-row.winner::after,
-.completed-match .ko-team-row.winner::after {
+.completed-match .team.winner::after {
     content: '';
     position: absolute;
     left: 10%;
@@ -459,9 +457,7 @@ section h2::after {
 }
 
 .live-match .team.loser::after,
-.completed-match .team.loser::after,
-.live-match .ko-team-row.loser::after,
-.completed-match .ko-team-row.loser::after {
+.completed-match .team.loser::after {
     content: '';
     position: absolute;
     left: 10%;
@@ -473,9 +469,7 @@ section h2::after {
 }
 
 .live-match .team.draw::after,
-.completed-match .team.draw::after,
-.live-match .ko-team-row.draw::after,
-.completed-match .ko-team-row.draw::after {
+.completed-match .team.draw::after {
     content: '';
     position: absolute;
     left: 10%;
@@ -574,6 +568,26 @@ section h2::after {
     font-size: 0.65rem;
 }
 
+/* Outside-the-box scores in predict mode: predicted (gray) or original (white) */
+.side-score {
+    flex-shrink: 0;
+    font-weight: 700;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    min-width: 1.1em;
+    text-align: center;
+}
+.side-score.predicted-side {
+    color: #999;
+}
+.side-score.original-side {
+    color: #fff;
+}
+.ko-team-row .side-score {
+    font-size: 0.7rem;
+    margin-left: 0.25rem;
+}
+
 .flag-icon {
     width: 18px;
     height: auto;
@@ -617,7 +631,7 @@ section h2::after {
     display: flex;
     margin: 0 auto;
     width: 100%;
-    gap: 0.75rem;
+    gap: 1.25rem;
     padding: 0 1rem;
 }
 
@@ -633,7 +647,8 @@ section h2::after {
 .col-center {
     justify-content: center;
     align-items: center;
-    flex: 1.1;
+    flex: 1.4;
+    padding: 0 0.75rem;
 }
 
 .knockout-match {
