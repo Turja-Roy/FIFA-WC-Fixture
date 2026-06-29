@@ -97,7 +97,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function getLiveWatchUrl() {
-        return 'https://www.yalla9live.tv/';
+        return 'https://www.syrlive.com/';
     }
 
     function getMatchStatus(match) {
