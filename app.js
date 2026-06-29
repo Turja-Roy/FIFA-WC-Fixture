@@ -216,6 +216,29 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
 
+        // Repair openfootball source bug: later knockout rounds sometimes
+        // hardcode a qualified team's literal name into a feeder slot instead
+        // of the W##/L## reference (e.g. R16 match 90 lists "Canada" instead of
+        // "W73"). That orphans the feeder match (R32 #73 South Africa vs Canada)
+        // from the bracket tree so it never renders, and mis-places the later
+        // match. Replace any literal name in a post-R32 slot with the W ref of
+        // the earlier knockout match containing that team.
+        (function fixKnockoutRefs() {
+            const all = [];
+            for (const r in parsedData.knockout) all.push(...parsedData.knockout[r]);
+            const isRef = s => /^[WL]\d+$/.test(s);          // feeder ref
+            const isPlaceholder = s => /^\d/.test(s);         // group slot e.g. 1A, 3ABCD
+            for (const m of all) {
+                if (m.round === 'Round of 32') continue;
+                for (const key of ['team1', 'team2']) {
+                    const val = m[key];
+                    if (!val || isRef(val) || isPlaceholder(val)) continue;
+                    const feeder = all.find(x => x.id < m.id && (x.team1 === val || x.team2 === val));
+                    if (feeder) m[key] = 'W' + feeder.id;
+                }
+            }
+        })();
+
         // Ensure sorted by time
         for (let g in parsedData.groups) {
             parsedData.groups[g].sort((a,b) => new Date(a.time) - new Date(b.time));
