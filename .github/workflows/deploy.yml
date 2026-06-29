@@ -1,0 +1,48 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; cancel in-progress runs for newer pushes.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Cache-bust: stamp each local asset's content hash into index.html as
+      # ?v=<hash>. Every change to app.js/style.css/allocation.js yields a new
+      # URL, so browsers always refetch instead of serving a stale cached copy.
+      - name: Stamp asset versions
+        run: |
+          for f in style.css allocation.js app.js; do
+            [ -f "$f" ] || continue
+            h=$(git hash-object "$f" | cut -c1-8)
+            if grep -qE "${f}\?v=[a-f0-9]+" index.html; then
+              sed -i -E "s#(${f}\?v=)[a-f0-9]+#\1${h}#g" index.html
+            else
+              sed -i -E "s#(${f})([\"'])#\1?v=${h}\2#g" index.html
+            fi
+            echo "stamped $f -> $h"
+          done
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
