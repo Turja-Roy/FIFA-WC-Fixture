@@ -392,9 +392,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // Find matching match in our data
                     const updateMatch = (m) => {
                         if (!m) return false;
+                        // Knockout matches may carry W##/L## feeder refs as
+                        // team1/team2 instead of real names; resolve before
+                        // comparing so stats/lineups attach to played KO matches.
+                        const info = m.round ? getResolvedMatchInfo(m) : null;
+                        const mt1 = info ? info.t1 : m.team1;
+                        const mt2 = info ? info.t2 : m.team2;
                         // ESPN: home listed first in competitor array
                         // openfootball: team1 is first listed (may be home or away)
-                        if ((m.team1 === normHome && m.team2 === normAway)) {
+                        if ((mt1 === normHome && mt2 === normAway)) {
                             m._espnEventId = ev.id;
                             m._espnStatusState = statusState;
                             m._espnDetails = comp.details || [];
@@ -419,7 +425,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 m._liveDetail = statusDetail; // e.g. "61'"
                             }
                             return true;
-                        } else if ((m.team1 === normAway && m.team2 === normHome)) {
+                        } else if ((mt1 === normAway && mt2 === normHome)) {
                             m._espnEventId = ev.id;
                             m._espnStatusState = statusState;
                             m._espnDetails = comp.details || [];
@@ -1002,6 +1008,81 @@ document.addEventListener('DOMContentLoaded', async () => {
         `;
     }
 
+    // Round order used to walk W##/L## feeder refs down the bracket tree.
+    const KO_ROUND_NAMES = [
+        { original: "Round of 32", storage: "Round of 32" },
+        { original: "Round of 16", storage: "Round of 16" },
+        { original: "Quarter-final", storage: "Quarter-finals" },
+        { original: "Semi-final", storage: "Semi-finals" },
+        { original: "Final", storage: "Final" }
+    ];
+
+    // Resolve a knockout match's team1/team2 to real names+codes. The source
+    // repair (fixKnockoutRefs) rewrites already-decided matchups into W##/L##
+    // feeder refs so the bracket tree stays connected, which means match.team1
+    // may be "W74" even for a played match. Trace the ref tree (and group
+    // placeholders) back to actual qualified teams. Returns raw values when a
+    // feeder is still undecided. Used by both the bracket and the match overlay
+    // so every view shows the same names.
+    function getResolvedMatchInfo(match) {
+        const rIdx = KO_ROUND_NAMES.findIndex(r => r.original === match.round);
+        if (rIdx === -1) return null;
+
+        if (rIdx === 0) {
+            const t1 = resolveBracketPosition(match.team1);
+            const t2 = resolveBracketPosition(match.team2);
+            return {
+                t1: t1 ? t1.name : match.team1,
+                t2: t2 ? t2.name : match.team2,
+                c1: t1 ? t1.code : match.code1,
+                c2: t2 ? t2.code : match.code2,
+                i1: t1 ? t1.incomplete : false,
+                i2: t2 ? t2.incomplete : false
+            };
+        }
+
+        const prevStorage = KO_ROUND_NAMES[rIdx - 1].storage;
+        const prevMatches = matchData.knockout[prevStorage] || [];
+
+        function resolveFromRef(raw) {
+            const ref = String(raw).match(/^([WL])(\d+)$/);
+            if (!ref) {
+                const r = resolveBracketPosition(raw);
+                return r ? { name: r.name, code: r.code, incomplete: !!r.incomplete } : null;
+            }
+            const wantWinner = ref[1] === 'W';
+            const refId = parseInt(ref[2]);
+            const pm = prevMatches.find(m => m.id === refId);
+            if (!pm) return null;
+
+            const side = getMatchWinnerSide(pm);
+            if (!side) return null; // undecided → keep placeholder
+            const pick = wantWinner ? side : (side === '1' ? '2' : '1');
+
+            const info = getResolvedMatchInfo(pm);
+            if (info) {
+                return pick === '1'
+                    ? { name: info.t1, code: info.c1, incomplete: !!info.i1 }
+                    : { name: info.t2, code: info.c2, incomplete: !!info.i2 };
+            }
+            return pick === '1'
+                ? { name: pm.team1, code: pm.code1, incomplete: false }
+                : { name: pm.team2, code: pm.code2, incomplete: false };
+        }
+
+        const w1 = resolveFromRef(match.team1);
+        const w2 = resolveFromRef(match.team2);
+
+        return {
+            t1: w1 ? w1.name : match.team1,
+            t2: w2 ? w2.name : match.team2,
+            c1: w1 ? w1.code : match.code1,
+            c2: w2 ? w2.code : match.code2,
+            i1: w1 ? !!w1.incomplete : true,
+            i2: w2 ? !!w2.incomplete : true
+        };
+    }
+
     function renderBracket() {
         const container = document.getElementById('bracket-container');
         container.innerHTML = '';
@@ -1012,75 +1093,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const sf = matchData.knockout["Semi-finals"] || [];
         const finalMatch = matchData.knockout["Final"] ? matchData.knockout["Final"][0] : null;
 
-        const roundNames = [
-            { original: "Round of 32", storage: "Round of 32" },
-            { original: "Round of 16", storage: "Round of 16" },
-            { original: "Quarter-final", storage: "Quarter-finals" },
-            { original: "Semi-final", storage: "Semi-finals" },
-            { original: "Final", storage: "Final" }
-        ];
-
-        function getResolvedBracketInfo(match) {
-            const rIdx = roundNames.findIndex(r => r.original === match.round);
-            if (rIdx === -1) return null;
-
-            if (rIdx === 0) {
-                const t1 = resolveBracketPosition(match.team1);
-                const t2 = resolveBracketPosition(match.team2);
-                return {
-                    t1: t1 ? t1.name : match.team1,
-                    t2: t2 ? t2.name : match.team2,
-                    c1: t1 ? t1.code : match.code1,
-                    c2: t2 ? t2.code : match.code2,
-                    i1: t1 ? t1.incomplete : false,
-                    i2: t2 ? t2.incomplete : false
-                };
-            }
-
-            const prevStorage = roundNames[rIdx - 1].storage;
-            const prevMatches = matchData.knockout[prevStorage] || [];
-
-            function resolveFromRef(raw) {
-                const ref = String(raw).match(/^([WL])(\d+)$/);
-                if (!ref) {
-                    const r = resolveBracketPosition(raw);
-                    return r ? { name: r.name, code: r.code, incomplete: !!r.incomplete } : null;
-                }
-                const wantWinner = ref[1] === 'W';
-                const refId = parseInt(ref[2]);
-                const pm = prevMatches.find(m => m.id === refId);
-                if (!pm) return null;
-
-                // Need the actual played/predicted result of the feeder match.
-                const side = getMatchWinnerSide(pm);
-                if (!side) return null; // undecided → keep placeholder
-                const pick = wantWinner ? side : (side === '1' ? '2' : '1');
-
-                // Recurse so the feeder's own teams (which may themselves be
-                // W##/L## or group placeholders) are fully resolved.
-                const info = getResolvedBracketInfo(pm);
-                if (info) {
-                    return pick === '1'
-                        ? { name: info.t1, code: info.c1, incomplete: !!info.i1 }
-                        : { name: info.t2, code: info.c2, incomplete: !!info.i2 };
-                }
-                return pick === '1'
-                    ? { name: pm.team1, code: pm.code1, incomplete: false }
-                    : { name: pm.team2, code: pm.code2, incomplete: false };
-            }
-
-            const w1 = resolveFromRef(match.team1);
-            const w2 = resolveFromRef(match.team2);
-
-            return {
-                t1: w1 ? w1.name : match.team1,
-                t2: w2 ? w2.name : match.team2,
-                c1: w1 ? w1.code : match.code1,
-                c2: w2 ? w2.code : match.code2,
-                i1: w1 ? !!w1.incomplete : true,
-                i2: w2 ? !!w2.incomplete : true
-            };
-        }
+        const getResolvedBracketInfo = getResolvedMatchInfo;
 
         const renderCol = (matches, align) => {
             const col = document.createElement('div');
@@ -1990,10 +2003,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
                         if (statusState === 'in') m._liveDetail = statusDetail;
                     };
-                    if (match.team1 === normHome && match.team2 === normAway) {
+                    // Resolve W##/L## knockout refs before comparing names.
+                    const info = match.round ? getResolvedMatchInfo(match) : null;
+                    const mt1 = info ? info.t1 : match.team1;
+                    const mt2 = info ? info.t2 : match.team2;
+                    if (mt1 === normHome && mt2 === normAway) {
                         doUpdate(match, espnHome.score, espnAway.score, espnHome.id, espnAway.id);
                         return true;
-                    } else if (match.team1 === normAway && match.team2 === normHome) {
+                    } else if (mt1 === normAway && mt2 === normHome) {
                         doUpdate(match, espnAway.score, espnHome.score, espnAway.id, espnHome.id);
                         return true;
                     }
@@ -2041,19 +2058,27 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function buildOverlayHeader(match) {
         const pensHtml = match.penalties ? `<div class="ov-score-pens">(${match.penalties.replace(' pens','')})</div>` : '';
+        // Knockout matches may carry W##/L## feeder refs as team1/team2 (see
+        // getResolvedMatchInfo). Resolve to real names/codes so the header
+        // matches the bracket and lineups instead of showing "W74 vs W77".
+        const info = match.round ? getResolvedMatchInfo(match) : null;
+        const name1 = info ? info.t1 : match.team1;
+        const name2 = info ? info.t2 : match.team2;
+        const code1 = info ? info.c1 : match.code1;
+        const code2 = info ? info.c2 : match.code2;
         return `
             <div class="ov-header">
                 <div class="ov-team">
-                    <img src="https://flagcdn.com/48x36/${match.code1.toLowerCase()}.png" alt="${match.team1}" class="ov-team-flag">
-                    <div class="ov-team-name">${match.team1}</div>
+                    <img src="https://flagcdn.com/48x36/${code1.toLowerCase()}.png" alt="${name1}" class="ov-team-flag">
+                    <div class="ov-team-name">${name1}</div>
                 </div>
                 <div>
                     <div class="ov-score">${match.score1 || '0'} - ${match.score2 || '0'}</div>
                     ${pensHtml}
                 </div>
                 <div class="ov-team">
-                    <img src="https://flagcdn.com/48x36/${match.code2.toLowerCase()}.png" alt="${match.team2}" class="ov-team-flag">
-                    <div class="ov-team-name">${match.team2}</div>
+                    <img src="https://flagcdn.com/48x36/${code2.toLowerCase()}.png" alt="${name2}" class="ov-team-flag">
+                    <div class="ov-team-name">${name2}</div>
                 </div>
             </div>
             <div class="ov-meta">
