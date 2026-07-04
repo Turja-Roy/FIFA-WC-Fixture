@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function isMatchWatchable(isoString) {
         const matchTime = new Date(isoString).getTime();
         const now = Date.now();
-        const MARGIN = 15 * 60 * 1000; // 15 minutes before/after
+        const MARGIN = 60 * 60 * 1000; // 60 minutes before/after
         return now >= matchTime - MARGIN && now <= matchTime + (110 * 60 * 1000) + MARGIN;
     }
 
@@ -128,10 +128,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     function getGoalsHtml(match) {
         const goals = [];
         if (match.goals1 && match.goals1.length) {
-            match.goals1.forEach(g => goals.push(`<span class="goal-scorer team1-goal">${getFlagHtml(match.code1)} ${formatGoalScorer(g)}</span>`));
+            match.goals1.forEach(g => goals.push({
+                html: `<span class="goal-scorer team1-goal">${getFlagHtml(match.code1)} ${formatGoalScorer(g)}</span>`,
+                owngoal: !!g.owngoal
+            }));
         }
         if (match.goals2 && match.goals2.length) {
-            match.goals2.forEach(g => goals.push(`<span class="goal-scorer team2-goal">${getFlagHtml(match.code2)} ${formatGoalScorer(g)}</span>`));
+            match.goals2.forEach(g => goals.push({
+                html: `<span class="goal-scorer team2-goal">${getFlagHtml(match.code2)} ${formatGoalScorer(g)}</span>`,
+                owngoal: !!g.owngoal
+            }));
         }
         return goals;
     }
@@ -182,6 +188,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (match.score && match.score.ft) {
                 s1 = match.score.ft[0];
                 s2 = match.score.ft[1];
+            }
+            // Extra-time result (et) is the real final score when a knockout
+            // match goes past 90'. Source keeps ft as the 90' score, so ft
+            // would show e.g. 2-2 while the actual result (and goal list) is 3-2.
+            if (match.score && match.score.et) {
+                s1 = match.score.et[0];
+                s2 = match.score.et[1];
             }
             if (match.score && match.score.p) {
                 pens = `${match.score.p[0]}-${match.score.p[1]} pens`;
@@ -250,11 +263,87 @@ document.addEventListener('DOMContentLoaded', async () => {
         return parsedData;
     }
 
+    const ESPN_CACHE_KEY = 'wc26_espn_cache';
+
+    function espnSnapshot(m) {
+        return {
+            _espnEventId: m._espnEventId,
+            _espnStatusState: m._espnStatusState,
+            _espnDetails: m._espnDetails,
+            _espnStats: m._espnStats,
+            _espnVenue: m._espnVenue,
+            _espnAttendance: m._espnAttendance,
+            _espnHeadline: m._espnHeadline,
+            _espnBroadcasts: m._espnBroadcasts,
+            _espnHomeName: m._espnHomeName,
+            _espnAwayName: m._espnAwayName,
+            score1: m.score1,
+            score2: m.score2,
+            goals1: m.goals1,
+            goals2: m.goals2,
+            _liveDetail: m._liveDetail
+        };
+    }
+
+    function saveEspnCache() {
+        try {
+            const cache = {};
+            if (matchData) {
+                for (const g in matchData.groups) {
+                    for (const m of matchData.groups[g]) {
+                        if (m._espnEventId) cache[String(m.id)] = espnSnapshot(m);
+                    }
+                }
+                for (const r in matchData.knockout) {
+                    for (const m of matchData.knockout[r]) {
+                        if (m._espnEventId) cache[String(m.id)] = espnSnapshot(m);
+                    }
+                }
+            }
+            localStorage.setItem(ESPN_CACHE_KEY, JSON.stringify(cache));
+        } catch (e) { /* localStorage may be full or blocked */ }
+    }
+
     async function loadData() {
         try {
+            // In-memory cache (latest this session)
+            const memCache = {};
+            if (matchData) {
+                for (const g in matchData.groups) {
+                    for (const m of matchData.groups[g]) {
+                        if (m._espnEventId) memCache[String(m.id)] = espnSnapshot(m);
+                    }
+                }
+                for (const r in matchData.knockout) {
+                    for (const m of matchData.knockout[r]) {
+                        if (m._espnEventId) memCache[String(m.id)] = espnSnapshot(m);
+                    }
+                }
+            }
+
+            // LocalStorage cache (survives page reloads)
+            const lsCache = (() => {
+                try { const r = localStorage.getItem(ESPN_CACHE_KEY); return r ? JSON.parse(r) : {}; }
+                catch (e) { return {}; }
+            })();
+
             matchData = await fetchInternetData();
             await fetchLiveScores();
+
+            // Merge: prefer fresh ESPN live data, then in-memory, then localStorage
+            const restore = (arr) => {
+                for (const m of arr) {
+                    if (m._espnEventId) continue;
+                    const id = String(m.id);
+                    const c = memCache[id] || lsCache[id];
+                    if (c) Object.assign(m, c);
+                }
+            };
+            for (const g in matchData.groups) restore(matchData.groups[g]);
+            for (const r in matchData.knockout) restore(matchData.knockout[r]);
+
             originalMatchData = JSON.parse(JSON.stringify(matchData));
+            saveEspnCache();
         } catch (error) {
             console.error("Error loading data:", error);
             document.getElementById('groups-container').innerHTML = `<p style="color: red; font-weight: bold; background: #fff; padding: 1rem; border-radius: 8px;">Error fetching live data: ${error.message}. Please check your internet connection.</p>`;
@@ -724,7 +813,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const watchBtn = watchable ? `<a href="${getLiveWatchUrl(match)}" target="_blank" class="live-watch-btn" onclick="event.stopPropagation()">▶ Live</a>` : '';
 
                 const goalList = getGoalsHtml(match);
-                const goalsHtml = goalList.length ? `<div class="match-goals">${goalList.map(g => `<div class="goal-entry">⚽ ${g}</div>`).join('')}</div>` : '';
+                const goalsHtml = goalList.length ? `<div class="match-goals">${goalList.map(g => `<div class="goal-entry">${g.owngoal ? '<span class="goal-og"></span>' : '⚽'} ${g.html}</div>`).join('')}</div>` : '';
                 const showInfoBtn = isMatchFinished(match) || isLive;
                 const infoBtn = showInfoBtn ? `<button class="match-info-btn" data-match-id="${match.id}" title="Match details">ℹ Stats</button>` : '';
 
@@ -861,7 +950,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const mappedStage = stageMap[match.round] || match.round || 'Knockout';
 
         const goalList = getGoalsHtml(match);
-        const goalsHtml = goalList.length ? `<div class="match-goals ko-goals">${goalList.map(g => `<div class="goal-entry">⚽ ${g}</div>`).join('')}</div>` : '';
+        const goalsHtml = goalList.length ? `<div class="match-goals ko-goals">${goalList.map(g => `<div class="goal-entry">${g.owngoal ? '<span class="goal-og"></span>' : '⚽'} ${g.html}</div>`).join('')}</div>` : '';
         const showInfoBtn = isMatchFinished(match) || isLive;
         const infoBtn = showInfoBtn ? `<button class="match-info-btn ko-info-btn" data-match-id="${match.id}" title="Match details">ℹ</button>` : '';
 
@@ -1065,8 +1154,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         for (const g in matchData.groups) allMatches.push(...matchData.groups[g]);
         for (const r in matchData.knockout) allMatches.push(...matchData.knockout[r]);
 
-        // Filter out completed matches (assuming ~2 hours duration)
-        const now = Date.now() - 2 * 60 * 60 * 1000; 
+        // Keep match in upcoming till 10 min after it ends
+        const MATCH_DURATION = 110 * 60 * 1000;
+        const POST_MATCH_GRACE = 10 * 60 * 1000;
+        const now = Date.now() - (MATCH_DURATION + POST_MATCH_GRACE);
         const futureMatches = allMatches.filter(m => new Date(m.time).getTime() > now);
         
         // Sort chronologically

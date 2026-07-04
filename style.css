@@ -1444,6 +1444,17 @@ input[type="date"]:focus {
     flex-shrink: 0;
 }
 
+.goal-entry .goal-og {
+    display: inline-block;
+    width: 0.85em;
+    height: 0.85em;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #ff6666, #cc0000 80%);
+    vertical-align: middle;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
 .goal-scorer {
     font-weight: 500;
 }
@@ -2003,7 +2014,15 @@ body.overlay-open {
 }
 
 .ov-ic-goal { font-size: 0.6rem; }
-.ov-ic-og { filter: grayscale(1) drop-shadow(0 1px 1px rgba(0,0,0,0.6)); opacity: 0.85; }
+/* Own goal: normal ⚽ with a red ring so it reads as an own goal */
+.ov-ic-og {
+    display: inline-block;
+    border: 1.5px solid #e11d1d;
+    border-radius: 50%;
+    padding: 1px;
+    line-height: 1;
+    box-sizing: content-box;
+}
 .ov-ic-assist { font-size: 0.55rem; }
 
 .ov-ic-card {
