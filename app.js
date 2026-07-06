@@ -235,19 +235,41 @@ document.addEventListener('DOMContentLoaded', async () => {
         // "W73"). That orphans the feeder match (R32 #73 South Africa vs Canada)
         // from the bracket tree so it never renders, and mis-places the later
         // match. Replace any literal name in a post-R32 slot with the W ref of
-        // the earlier knockout match containing that team.
+        // the match that produced it — which must be the IMMEDIATELY previous
+        // round (the team's winning match there), not just any earlier match
+        // containing the name. A team appears in every round it wins, so
+        // matching globally (e.g. QF "France" → R32 #77) skips the R16 feeder
+        // and flattens the bracket tree, breaking the column layout.
         (function fixKnockoutRefs() {
-            const all = [];
-            for (const r in parsedData.knockout) all.push(...parsedData.knockout[r]);
+            const roundOrder = ['Round of 32', 'Round of 16', 'Quarter-finals', 'Semi-finals', 'Final'];
             const isRef = s => /^[WL]\d+$/.test(s);          // feeder ref
             const isPlaceholder = s => /^\d/.test(s);         // group slot e.g. 1A, 3ABCD
-            for (const m of all) {
-                if (m.round === 'Round of 32') continue;
-                for (const key of ['team1', 'team2']) {
-                    const val = m[key];
-                    if (!val || isRef(val) || isPlaceholder(val)) continue;
-                    const feeder = all.find(x => x.id < m.id && (x.team1 === val || x.team2 === val));
-                    if (feeder) m[key] = 'W' + feeder.id;
+            // Winner name from the ORIGINAL literal names + final result
+            // (et/pens aware). Captured before any mutation so a feeder that was
+            // itself rewritten this pass can still be matched by name.
+            const orig = new Map();
+            for (const r in parsedData.knockout) {
+                for (const m of parsedData.knockout[r]) orig.set(m, { team1: m.team1, team2: m.team2 });
+            }
+            const winnerName = (m) => {
+                const o = orig.get(m);
+                if (!o) return null;
+                const a = Number(m.score1), b = Number(m.score2);
+                if (Number.isFinite(a) && Number.isFinite(b) && a !== b) return a > b ? o.team1 : o.team2;
+                const pen = String(m.penalties || '').match(/(\d+)\s*-\s*(\d+)/);
+                if (pen && +pen[1] !== +pen[2]) return +pen[1] > +pen[2] ? o.team1 : o.team2;
+                return null; // undecided
+            };
+            for (let rIdx = 1; rIdx < roundOrder.length; rIdx++) {
+                const matches = parsedData.knockout[roundOrder[rIdx]] || [];
+                const prevMatches = parsedData.knockout[roundOrder[rIdx - 1]] || [];
+                for (const m of matches) {
+                    for (const key of ['team1', 'team2']) {
+                        const val = orig.get(m)[key];
+                        if (!val || isRef(val) || isPlaceholder(val)) continue;
+                        const feeder = prevMatches.find(pm => winnerName(pm) === val);
+                        if (feeder) m[key] = 'W' + feeder.id;
+                    }
                 }
             }
         })();
