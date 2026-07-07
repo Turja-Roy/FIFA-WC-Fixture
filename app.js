@@ -307,22 +307,45 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
     }
 
+    // Cache format version + max age. Bump ESPN_CACHE_VERSION to invalidate
+    // all old caches after a breaking change to the snapshot shape.
+    const ESPN_CACHE_VERSION = 2;
+    const ESPN_CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+    // A live ('in') status is transient — it must NOT survive a reload, or a
+    // match that has since ended keeps showing "live" forever (ESPN drops old
+    // events off its scoreboard, so no fresh state overwrites the stale one).
+    // Downgrade 'in' to 'post' when scores exist, else drop the status so
+    // getMatchStatus() falls back to the time window / openfootball score.
+    function sanitizeSnapshotForStorage(snap) {
+        if (snap._espnStatusState !== 'in') return snap;
+        const s = { ...snap };
+        const hasScore = s.score1 !== '' && s.score1 != null && s.score2 !== '' && s.score2 != null;
+        s._espnStatusState = hasScore ? 'post' : undefined;
+        s._liveDetail = undefined;
+        return s;
+    }
+
     function saveEspnCache() {
         try {
-            const cache = {};
+            const entries = {};
             if (matchData) {
                 for (const g in matchData.groups) {
                     for (const m of matchData.groups[g]) {
-                        if (m._espnEventId) cache[String(m.id)] = espnSnapshot(m);
+                        if (m._espnEventId) entries[String(m.id)] = sanitizeSnapshotForStorage(espnSnapshot(m));
                     }
                 }
                 for (const r in matchData.knockout) {
                     for (const m of matchData.knockout[r]) {
-                        if (m._espnEventId) cache[String(m.id)] = espnSnapshot(m);
+                        if (m._espnEventId) entries[String(m.id)] = sanitizeSnapshotForStorage(espnSnapshot(m));
                     }
                 }
             }
-            localStorage.setItem(ESPN_CACHE_KEY, JSON.stringify(cache));
+            localStorage.setItem(ESPN_CACHE_KEY, JSON.stringify({
+                v: ESPN_CACHE_VERSION,
+                savedAt: Date.now(),
+                entries
+            }));
         } catch (e) { /* localStorage may be full or blocked */ }
     }
 
@@ -343,10 +366,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             }
 
-            // LocalStorage cache (survives page reloads)
+            // LocalStorage cache (survives page reloads). Versioned + TTL'd:
+            // ignore wrong-version or expired payloads so stale data can't leak.
             const lsCache = (() => {
-                try { const r = localStorage.getItem(ESPN_CACHE_KEY); return r ? JSON.parse(r) : {}; }
-                catch (e) { return {}; }
+                try {
+                    const r = localStorage.getItem(ESPN_CACHE_KEY);
+                    if (!r) return {};
+                    const parsed = JSON.parse(r);
+                    // Reject old unversioned format and stale/mismatched caches.
+                    if (!parsed || parsed.v !== ESPN_CACHE_VERSION || !parsed.entries) return {};
+                    if (Date.now() - (parsed.savedAt || 0) > ESPN_CACHE_MAX_AGE) return {};
+                    return parsed.entries;
+                } catch (e) { return {}; }
             })();
 
             matchData = await fetchInternetData();
@@ -359,6 +390,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const id = String(m.id);
                     const c = memCache[id] || lsCache[id];
                     if (c) Object.assign(m, c);
+                    // Safety net for pre-fix caches already on disk: a restored
+                    // 'in' state with no fresh ESPN event, past its time window,
+                    // is stale — downgrade so the match stops showing as live.
+                    if (m._espnStatusState === 'in' && !isMatchLive(m.time)) {
+                        const hasScore = m.score1 !== '' && m.score1 != null && m.score2 !== '' && m.score2 != null;
+                        m._espnStatusState = hasScore ? 'post' : undefined;
+                        m._liveDetail = undefined;
+                    }
                 }
             };
             for (const g in matchData.groups) restore(matchData.groups[g]);
