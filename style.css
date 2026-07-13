@@ -807,6 +807,21 @@ section h2::after {
     letter-spacing: 1.5px;
 }
 
+.third-place-wrap {
+    width: 100%;
+    margin-top: 1.5rem;
+}
+
+.third-place-label {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.6rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    margin-bottom: 0.3rem;
+    letter-spacing: 1.2px;
+}
+
 .penalties-input {
     width: 100%;
     margin-top: 0.3rem;

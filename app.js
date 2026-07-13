@@ -73,6 +73,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         return now >= matchTime - MARGIN && now <= matchTime + (110 * 60 * 1000) + MARGIN;
     }
 
+    // Lineups publish ~1 hour before kickoff. Show live status + stats icon from
+    // then on so people can open the overlay and see the lineup as early as it's
+    // available (stays true through the match and afterwards).
+    function isLineupWindowOpen(isoString) {
+        const matchTime = new Date(isoString).getTime();
+        return Date.now() >= matchTime - (60 * 60 * 1000);
+    }
+
     function getFlagHtml(code) {
         if (!code || code === 'un') return '';
         return `<img src="https://flagcdn.com/24x18/${code.toLowerCase()}.png" alt="${code}" class="flag-icon">`;
@@ -168,6 +176,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             "Round of 16": "Round of 16",
             "Quarter-final": "Quarter-finals",
             "Semi-final": "Semi-finals",
+            "Match for third place": "Third-place play-off",
             "Final": "Final"
         };
 
@@ -309,7 +318,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Cache format version + max age. Bump ESPN_CACHE_VERSION to invalidate
     // all old caches after a breaking change to the snapshot shape.
-    const ESPN_CACHE_VERSION = 2;
+    const ESPN_CACHE_VERSION = 3;
     const ESPN_CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
     // A live ('in') status is transient — it must NOT survive a reload, or a
@@ -389,7 +398,21 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (m._espnEventId) continue;
                     const id = String(m.id);
                     const c = memCache[id] || lsCache[id];
-                    if (c) Object.assign(m, c);
+                    if (c) {
+                        // A cache snapshot taken while a match was still upcoming
+                        // holds blank scores. openfootball later fills the real
+                        // score, but if ESPN has since dropped the event, this
+                        // merge would overwrite that fresh score with the cached
+                        // blank (match shows empty, later rounds can't resolve).
+                        // Only let the cache set scores when it actually has them.
+                        const cc = { ...c };
+                        const cacheHasScore = cc.score1 !== '' && cc.score1 != null && cc.score2 !== '' && cc.score2 != null;
+                        const mHasScore = m.score1 !== '' && m.score1 != null && m.score2 !== '' && m.score2 != null;
+                        if (!cacheHasScore && mHasScore) {
+                            delete cc.score1; delete cc.score2; delete cc.goals1; delete cc.goals2;
+                        }
+                        Object.assign(m, cc);
+                    }
                     // Safety net for pre-fix caches already on disk: a restored
                     // 'in' state with no fresh ESPN event, past its time window,
                     // is stale — downgrade so the match stops showing as live.
@@ -881,7 +904,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 const goalList = getGoalsHtml(match);
                 const goalsHtml = goalList.length ? `<div class="match-goals">${goalList.map(g => `<div class="goal-entry">${g.owngoal ? '<span class="goal-og"></span>' : '⚽'} ${g.html}</div>`).join('')}</div>` : '';
-                const showInfoBtn = isMatchFinished(match) || isLive;
+                const showInfoBtn = isMatchFinished(match) || isLive || isLineupWindowOpen(match.time);
                 const infoBtn = showInfoBtn ? `<button class="match-info-btn" data-match-id="${match.id}" title="Match details">ℹ Stats</button>` : '';
 
                 let showCombined = false;
@@ -1018,7 +1041,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const goalList = getGoalsHtml(match);
         const goalsHtml = goalList.length ? `<div class="match-goals ko-goals">${goalList.map(g => `<div class="goal-entry">${g.owngoal ? '<span class="goal-og"></span>' : '⚽'} ${g.html}</div>`).join('')}</div>` : '';
-        const showInfoBtn = isMatchFinished(match) || isLive;
+        const showInfoBtn = isMatchFinished(match) || isLive || isLineupWindowOpen(match.time);
         const infoBtn = showInfoBtn ? `<button class="match-info-btn ko-info-btn" data-match-id="${match.id}" title="Match details">ℹ</button>` : '';
 
         const showPredict = !!predict;
@@ -1086,7 +1109,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // feeder is still undecided. Used by both the bracket and the match overlay
     // so every view shows the same names.
     function getResolvedMatchInfo(match) {
-        const rIdx = KO_ROUND_NAMES.findIndex(r => r.original === match.round);
+        // Third-place play-off feeds from the losers (L101/L102) of the semis,
+        // not from a linear previous round, so resolve it against Semi-finals.
+        const isThirdPlace = match.round === "Match for third place";
+        const rIdx = isThirdPlace
+            ? KO_ROUND_NAMES.findIndex(r => r.storage === "Semi-finals") + 1
+            : KO_ROUND_NAMES.findIndex(r => r.original === match.round);
         if (rIdx === -1) return null;
 
         if (rIdx === 0) {
@@ -1153,6 +1181,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const qf = matchData.knockout["Quarter-finals"] || [];
         const sf = matchData.knockout["Semi-finals"] || [];
         const finalMatch = matchData.knockout["Final"] ? matchData.knockout["Final"][0] : null;
+        const thirdMatch = matchData.knockout["Third-place play-off"] ? matchData.knockout["Third-place play-off"][0] : null;
 
         const getResolvedBracketInfo = getResolvedMatchInfo;
 
@@ -1210,6 +1239,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const centerCol = document.createElement('div');
         centerCol.className = 'bracket-column col-center';
         if (finalMatch) centerCol.innerHTML = createKnockoutMatchHtml(finalMatch, true, getResolvedBracketInfo(finalMatch));
+        if (thirdMatch) {
+            const thirdWrap = document.createElement('div');
+            thirdWrap.className = 'third-place-wrap';
+            thirdWrap.innerHTML = '<div class="third-place-label">🥉 Third place</div>'
+                + createKnockoutMatchHtml(thirdMatch, false, getResolvedBracketInfo(thirdMatch));
+            centerCol.appendChild(thirdWrap);
+        }
         container.appendChild(centerCol);
 
         // Right Bracket (SF -> R32)
@@ -1228,9 +1264,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         for (const g in matchData.groups) allMatches.push(...matchData.groups[g]);
         for (const r in matchData.knockout) allMatches.push(...matchData.knockout[r]);
 
-        // Keep match in upcoming till 10 min after it ends
+        // Keep match in upcoming till 1 hour after it ends
         const MATCH_DURATION = 110 * 60 * 1000;
-        const POST_MATCH_GRACE = 10 * 60 * 1000;
+        const POST_MATCH_GRACE = 60 * 60 * 1000;
         const now = Date.now() - (MATCH_DURATION + POST_MATCH_GRACE);
         const futureMatches = allMatches.filter(m => new Date(m.time).getTime() > now);
         
